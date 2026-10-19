@@ -239,6 +239,8 @@ def load_wordnet(kb, wn_dir, conf=0.99, definitions=True, max_senses=8):
             kb.taxa.add(name)     # Linnaean taxa: sibling classes really are disjoint
         if lexfile == _SUBSTANCE and " " not in kb.bare(name):
             kb.mass.add(name)     # 'gold', 'water' (but 'noble metals' are countable)
+        if lexfile in (_SUBSTANCE, _FOOD):
+            kb.stuff.add(name)
         others = [_wn_name(w) for w in words if w.lower() != kb.bare(name).replace(" ", "_")]
         if others:
             kb.words[name] = others[:4]

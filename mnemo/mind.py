@@ -207,7 +207,11 @@ class Mind:
             return False
         if low in self.kb.senses and low not in self.kb.proper and \
                 self.kb.canon(low) not in self.kb.display:
-            return False      # a common noun ('Gold is a metal')
+            # a common noun ('Gold is a metal') -- unless it stands bare and singular
+            # before 'is', which count nouns cannot do: 'Opus is a penguin' names someone
+            stuff = any(k in self.kb.stuff or k in self.kb.mass
+                        for k in self.kb.senses[low])
+            return nxt in ("is", "was", "has") and not stuff
         if self.semantic is not None and low in self.semantic.index and \
                 self.semantic.index[low] < 3000:
             return False
@@ -583,10 +587,27 @@ class Mind:
             names = [self.kb.name(a.value) for a in ans[:5]]
             return self._cap(self._join(names)) + "."
         if q.extra:
-            hd = self._hd_analogy(q.extra, q.o)
+            cue, target = self._c(q.extra), self._c(q.o)
+            hd = self._hd_analogy(cue, target) or self._map_analogy(cue, target)
             if hd:
                 return hd
         return "I don't know."
+
+    def _map_analogy(self, cue, target):
+        """Structure mapping: the dollar is the currency of the USA, so 'the
+        dollar of Mexico' is what stands in that relation to Mexico."""
+        for f in self.kb.out(cue):
+            if f.truth.f < 0.5 or f.r == "isa":
+                continue
+            ans = [a for a in self.kb.subjects(f.r, target) if a.value != cue]
+            if ans:
+                x = ans[0].value
+                self._record(Answer(Truth(1.0, 0.8), [f] + ans[0].premises, "analogy"))
+                rel = f.r[:-3].replace("_", " ") if f.r.endswith("_of") else f.r
+                return (f"{self._cap(self.kb.name(x))} (by analogy: {self.kb.name(cue)} is the "
+                        f"{rel} of {self.kb.ref(f.o)}, and {self.kb.name(x)} is the {rel} of "
+                        f"{self.kb.ref(target)}).")
+        return None
 
     def _hd_analogy(self, cue, target):
         """'What is the dollar of Mexico?': find a record that contains the
@@ -788,7 +809,7 @@ class Mind:
 
     # ------------------------------------------------------------------ persistence
     _LEXICAL = ("definitions", "senses", "aliases", "proper", "words", "surface", "primed",
-                "mass", "taxa")
+                "mass", "stuff", "taxa")
 
     def save(self, directory):
         """Save the whole mind (cortex, semantic memory, facts, episodes)."""

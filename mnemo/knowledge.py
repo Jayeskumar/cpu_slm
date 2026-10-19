@@ -144,6 +144,7 @@ class Knowledge:
         self.surface = {}       # concept -> the word people use for it ('country', not 'state')
         self.primed = {}        # word -> the sense recently chosen for it (one sense per discourse)
         self.mass = set()       # mass nouns ('gold', 'water'): 'gold is', not 'gold are'
+        self.stuff = set()      # substances and foods: a bare 'Chocolate is ...' is not a name
         self.taxa = set()       # animal and plant classes (disjoint siblings)
         self.authority = {"wordnet", "pack", "innate"}  # curated sources
 
@@ -157,8 +158,8 @@ class Knowledge:
         if proper:
             if x in self.proper:
                 return self.proper[x]
-            if x in self.definitions and x not in self.display:
-                return x + "#0"
+            if (x in self.definitions or x in self.aliases) and x not in self.display:
+                return x + "#0"      # a name, not the dictionary word it spells
         return self.aliases.get(x, x)
 
     def other_senses(self, word, concept):
@@ -173,7 +174,7 @@ class Knowledge:
         self.clock += 1
 
     def tell(self, s, r, o, positive=True, conf=0.9, qty=None, source="told", replace=False,
-             generic=False):
+             generic=None):
         key = (s, r, o)
         t = Truth(1.0 if positive else 0.0, conf)
         old = self.facts.get(key)
@@ -184,7 +185,7 @@ class Knowledge:
             if qty is not None:
                 old.qty = qty
             return old
-        fact = Fact(s, r, o, t, qty, source, [self.clock], generic or None)
+        fact = Fact(s, r, o, t, qty, source, [self.clock], generic)
         self.facts[key] = fact
         self.by_s[s].add(key)
         self.by_o[o].add(key)
@@ -422,7 +423,8 @@ class Knowledge:
         if r in INVERSE:
             inv = INVERSE[r]
             for g in self.inn(s, inv):
-                out.append(Fact(s, r, g.s, g.truth, source="inverse", uses=g.uses))
+                out.append(Fact(s, r, g.s, g.truth, source="inverse", uses=g.uses,
+                                generic=getattr(g, "generic", None)))
         return out
 
     def _induce(self, m, r, o, exclude=None):
