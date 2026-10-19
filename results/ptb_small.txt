@@ -1,0 +1,5 @@
+memory: 57.3 MB, mixer inputs: 31
+train: 5101618 bytes, 1.3411 bpc (online), 39.09 s (0.13 MB/s)
+test data/ptb/ptb.test.txt: 449945 bytes, 1.2501 bpc, 82430 tokens, 113.26 token-ppl, 3.49 s (0.13 MB/s) [online]
+  lexicon alone: active on 100.0% of bytes, 1.2689 bpc there
+  memory after: 89.8 MB

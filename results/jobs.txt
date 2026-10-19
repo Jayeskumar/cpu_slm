@@ -1,0 +1,15 @@
+ptb_tiny        ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 18 --hb 21 --mb 18 --lex 3
+ptb_small       ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 21 --hb 23 --mb 21 --lex 4
+ptb_default     ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 22 --hb 24 --mb 22 --lex 4
+ptb_large       ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 23 --hb 24 --mb 22 --lex 5
+ptb_default_static ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 22 --hb 24 --mb 22 --lex 4 --static
+ptb_nolex       ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 22 --hb 24 --mb 22 --lex 0
+ptb_nolex_static ./build/mnemo bench --train data/ptb/ptb.train.txt --test data/ptb/ptb.test.txt --spaced --tb 22 --hb 24 --mb 22 --lex 0 --static
+wt2_tiny        ./build/mnemo bench --train data/wikitext2/train.txt --test data/wikitext2/test.txt --spaced --tb 18 --hb 24 --mb 18 --lex 3
+wt2_small       ./build/mnemo bench --train data/wikitext2/train.txt --test data/wikitext2/test.txt --spaced --tb 21 --hb 24 --mb 21 --lex 4
+wt2_default     ./build/mnemo bench --train data/wikitext2/train.txt --test data/wikitext2/test.txt --spaced --tb 22 --hb 24 --mb 22 --lex 4
+wt2_default_static ./build/mnemo bench --train data/wikitext2/train.txt --test data/wikitext2/test.txt --spaced --tb 22 --hb 24 --mb 22 --lex 4 --static
+shk_tiny        ./build/mnemo bench --train data/shakespeare/train.txt --test data/shakespeare/val.txt --tb 18 --hb 21 --mb 18 --lex 3
+shk_default     ./build/mnemo bench --train data/shakespeare/train.txt --test data/shakespeare/val.txt --tb 22 --hb 24 --mb 22 --lex 4
+shk_default_static ./build/mnemo bench --train data/shakespeare/train.txt --test data/shakespeare/val.txt --tb 22 --hb 24 --mb 22 --lex 4 --static
+shk_nolex_static ./build/mnemo bench --train data/shakespeare/train.txt --test data/shakespeare/val.txt --tb 22 --hb 24 --mb 22 --lex 0 --static

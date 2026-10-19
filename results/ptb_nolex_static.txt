@@ -1,0 +1,4 @@
+memory: 105.0 MB, mixer inputs: 29
+train: 5101618 bytes, 1.4274 bpc (online), 21.66 s (0.24 MB/s)
+test data/ptb/ptb.test.txt: 449945 bytes, 1.4067 bpc, 82430 tokens, 204.86 token-ppl, 1.40 s (0.32 MB/s) [static]
+  memory after: 105.0 MB

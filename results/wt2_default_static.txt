@@ -1,0 +1,5 @@
+memory: 105.3 MB, mixer inputs: 31
+train: 10797148 bytes, 1.4600 bpc (online), 112.11 s (0.10 MB/s)
+test data/wikitext2/test.txt: 1256449 bytes, 1.4405 bpc, 245569 tokens, 165.45 token-ppl, 14.21 s (0.09 MB/s) [static]
+  lexicon alone: active on 100.0% of bytes, 1.4422 bpc there
+  memory after: 182.0 MB

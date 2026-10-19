@@ -1,0 +1,7 @@
+build/
+data/
+models/
+*.o
+*.so
+__pycache__/
+*.pyc

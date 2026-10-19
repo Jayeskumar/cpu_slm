@@ -1,0 +1,5 @@
+memory: 16.3 MB, mixer inputs: 31
+train: 1003854 bytes, 1.9642 bpc (online), 7.89 s (0.13 MB/s)
+test data/shakespeare/val.txt: 111540 bytes, 1.8667 bpc, 24628 tokens, 350.79 token-ppl, 0.84 s (0.13 MB/s) [online]
+  lexicon alone: active on 98.1% of bytes, 2.1055 bpc there
+  memory after: 25.1 MB
