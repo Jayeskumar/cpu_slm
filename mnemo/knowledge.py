@@ -147,6 +147,7 @@ class Knowledge:
         self.stuff = set()      # substances and foods: a bare 'Chocolate is ...' is not a name
         self.taxa = set()       # animal and plant classes (disjoint siblings)
         self.authority = {"wordnet", "pack", "innate"}  # curated sources
+        self.loaded = set()     # bulk sources already fed ('wordnet', 'pack:general')
 
     def canon(self, x, proper=False):
         """The concept a word names: the sense chosen for it lately, else its

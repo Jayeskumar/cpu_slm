@@ -809,7 +809,7 @@ class Mind:
 
     # ------------------------------------------------------------------ persistence
     _LEXICAL = ("definitions", "senses", "aliases", "proper", "words", "surface", "primed",
-                "mass", "stuff", "taxa")
+                "mass", "stuff", "taxa", "loaded")
 
     def save(self, directory):
         """Save the whole mind (cortex, semantic memory, facts, episodes)."""

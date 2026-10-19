@@ -54,25 +54,33 @@ def cmd_feed(a):
     from . import feed
     m = load_mind(a.brain)
     t0 = time.time()
+    loaded = m.kb.loaded
     if a.names and os.path.isdir(a.names):
         print(f"names: {feed.load_names(a.names)} first names")
-    if a.wordnet and os.path.isdir(a.wordnet):
+    if a.wordnet and "wordnet" in loaded:
+        print("WordNet: already in this brain")
+    elif a.wordnet and os.path.isdir(a.wordnet):
         st = feed.load_wordnet(m.kb, a.wordnet)
+        loaded.add("wordnet")
         print(f"WordNet: {st['concepts']} concepts, {st['isa']} is-a links, "
               f"{st['part_of'] + st['has'] + st['made_of'] + st['in']} part/substance/place links, "
               f"{st['definitions']} definitions ({time.time() - t0:.0f} s)")
     elif a.wordnet:
         print(f"(no WordNet at {a.wordnet}; run scripts/get_data.sh to fetch it)")
     for name in a.pack or []:
+        if "pack:" + name in loaded:
+            print(f"pack {name}: already in this brain")
+            continue
         added, failed = feed.load_pack(m, name)
+        loaded.add("pack:" + name)
         print(f"pack {name}: {added} facts" + (f", {len(failed)} lines not understood: "
                                               f"{failed[:3]}" if failed else ""))
     for path in a.files:
         if path.endswith((".tsv", ".jsonl", ".json")):
-            print(f"{path}: {feed.load_triples(m.kb, path)} triples")
+            print(f"{path}: {feed.load_triples(m.kb, path, a.source, a.conf)} triples")
         else:
             with open(path, encoding="utf-8") as f:
-                added, failed = feed.load_statements(m, f, source="file")
+                added, failed = feed.load_statements(m, f, source=a.source, conf=a.conf)
             print(f"{path}: {added} facts" + (f", {len(failed)} sentences not understood"
                                               if failed else ""))
     m.save(a.brain)
@@ -194,6 +202,8 @@ def main(argv=None):
     f.add_argument("--no-wordnet", dest="wordnet", action="store_const", const=None)
     f.add_argument("--names", default="data/nltk/names", help="first-name lists")
     f.add_argument("--pack", nargs="*", default=["general"], help="knowledge packs (knowledge/*.txt)")
+    f.add_argument("--source", default="file", help="source label for the files' facts")
+    f.add_argument("--conf", type=float, default=0.9, help="confidence of the files' facts")
     f.set_defaults(fn=cmd_feed)
     d = sub.add_parser("demo", help="scripted tour")
     d.add_argument("--brain", default="models/brain")

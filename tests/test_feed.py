@@ -142,3 +142,23 @@ def test_fed_mind_survives_save_and_load():
     assert m2.kb.canon("metal") == "metallic element"
     assert m2.hear("Is gold a metal?").startswith("Yes")
     assert m2.hear("Is gold heavier than iron?").startswith("Yes")
+
+
+def test_teacher_output_is_filtered_to_what_mnemo_can_read():
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
+        __file__))), "tools"))
+    import teacher_pack
+    reply = """Here are some facts about owls:
+1. Owls are birds.
+2. **Owls can fly.**
+- Owls hunt at night, using their excellent hearing to locate prey in complete darkness.
+* Owls have big eyes
+Owls are birds.
+I hope this helps!"""
+    kept = teacher_pack.keep(reply.splitlines())
+    assert kept == ["Owls are birds.", "Owls can fly.", "Owls have big eyes."], kept
+    m = Mind()
+    added, failed = feed.load_statements(m, kept, source="teacher", conf=0.7)
+    assert added == 3 and not failed
+    assert m.kb.get("owl", "can", "fly").source == "teacher"
