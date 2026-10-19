@@ -203,7 +203,7 @@ class Mind:
         if L.is_plural(low) or nxt in ("are", "were", "have", "do", "live", "eat", "can",
                                        "cannot", "can't", "don't", "never", "always",
                                        "often", "usually") or \
-                nxt in L.VERBS or nxt in L.INTRANSITIVE or low in self.kb._MASS:
+                nxt in L.VERBS or nxt in L.INTRANSITIVE:
             return False
         if low in self.kb.senses and low not in self.kb.proper and \
                 self.kb.canon(low) not in self.kb.display:
