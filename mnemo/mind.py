@@ -235,7 +235,7 @@ class Mind:
             f.s, o = self._senses_for(s_word, f.s, f.r, None if raw_o else o_word, f.o)
             if not raw_o:
                 f.o = o
-        elif f.r == "isa" and self.kb.senses:
+        elif f.r == "isa" and self.kb.senses and not self._own(f.s):
             # 'Pluto is not a planet' corrects the sense that is one (the planet, not the god)
             for k in [f.s] + self.kb.other_senses(s_word, f.s)[:4]:
                 if self._fits(k, "isa", f.o):

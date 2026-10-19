@@ -17,6 +17,10 @@ Dolphins are mammals.
 Seals are mammals.
 Bats are mammals.
 Ducks are birds.
+Penguins are birds.
+Ostriches are birds.
+Emus are birds.
+Kiwis are birds.
 Eagles are birds.
 Owls are birds.
 Sharks are fish.
