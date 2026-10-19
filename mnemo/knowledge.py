@@ -312,7 +312,7 @@ class Knowledge:
                                         "inheritance", dist=mem.dist))
                 elif depth > 0 and mem.dist <= 3:
                     ind = self._induce(m, r, o, exclude=s)
-                    if ind.known:
+                    if ind.known and self._enough(ind):
                         cands.append(Answer(Truth.deduction(mem.truth, ind.truth),
                                             mem.premises + [ind], "inheritance+induction",
                                             dist=mem.dist))
@@ -328,10 +328,14 @@ class Knowledge:
                 cands.append(Answer(Truth(0.0, rev.truth.c * 0.95), rev.premises, "asymmetry"))
         if not cands and inheritable(r):
             ind = self._induce(s, r, o)
-            if ind.known:
+            if ind.known and self._enough(ind):
                 cands.append(ind)
         if not cands and r == "isa":
             neg = self._disjoint(s, o)
+            if neg.known:
+                cands.append(neg)
+        if not cands and r == "in":
+            neg = self._elsewhere(s, o)
             if neg.known:
                 cands.append(neg)
         if not cands and r == "isa" and not self.curated(s):
@@ -354,6 +358,8 @@ class Knowledge:
         own = [a for a in cands if a.dist == 0]
         if own:
             return max(own, key=lambda a: (a.truth.c, a.how == "direct"))
+        stated = [a for a in cands if a.how == "inheritance"]
+        cands = stated or cands      # what is stated about a kind beats a guess from examples
         dmin = min(a.dist for a in cands)
         return max((a for a in cands if a.dist == dmin), key=lambda a: a.truth.c)
 
@@ -395,6 +401,20 @@ class Knowledge:
                 not self.taxa
             return Answer(Truth(0.0, 0.7 if sure else 0.45),
                           chain[:-1] if len(chain) > 1 else [], "taxonomy", stmt=(branch, o, p))
+        return NONE
+
+    _REGIONS = ("continent", "country#2", "country", "state#4")
+
+    def _elsewhere(self, s, o):
+        """'Is Tokyo in Europe?': Tokyo is in Asia, and continents (like
+        countries) do not overlap, so no -- unless s is known to be in o."""
+        kind = next((k for k in self._REGIONS if self.ask(o, "isa", k).truth.f >= 0.5
+                     and self.ask(o, "isa", k).known), None)
+        if kind is None:
+            return NONE
+        for x, a in self.reach(s, "in").items():
+            if x != o and self.get(x, "isa", kind) is not None:
+                return Answer(Truth(0.0, 0.7), a.premises, "elsewhere", stmt=(x, o, kind))
         return NONE
 
     def _edges(self, s, r):
@@ -724,6 +744,10 @@ class Knowledge:
                                  (self.word(x) if self.bare(x) in self._MASS else plural(self.word(x)))
                                  for x in (branch, o))
             return self._cap_first(f"{lead}{kinds} are different kinds of {self.name(p)}") + "."
+        if a.how == "elsewhere" and a.stmt:
+            x, o, kind = a.stmt
+            text = self._render(a.premises, brief)
+            return self._cap_first(f"{text}, and {self.ref(x)} is not part of {self.ref(o)}") + "."
         if not a.premises:
             return "I have no evidence either way."
         if a.how == "induction" and a.stmt:

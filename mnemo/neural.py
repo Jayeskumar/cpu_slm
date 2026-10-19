@@ -201,7 +201,7 @@ class LSTMLM:
         lp = out.T.reshape(-1)            # back to stream order for positions 1..n
         rest = len(data) - 1 - n          # tail tokens: score them with a fresh state
         if rest > 0:
-            tail = np.asarray(data[n - 1:])
+            tail = np.asarray(data[n:])
             st = self.zero_state(1)
             _, _, _, tl = self.forward(tail[:-1, None], tail[1:, None], st, train=False,
                                        need_grad=False)

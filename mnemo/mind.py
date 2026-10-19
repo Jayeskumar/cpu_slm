@@ -394,9 +394,17 @@ class Mind:
         o = q.o if q.r in self._RAW_OBJECT else self._c(q.o)
         a = self._record(self.kb.ask(s, q.r, o))
         if q.r == "isa" and not (a.known and a.truth.f >= 0.5):
-            other = self._other_sense_isa(q.s, s, q.o, o)
+            # a clear 'no' from the usual sense of the subject stands ('a shark is not a
+            # mammal', whatever a 'shark' of a person may be); the object may still be
+            # meant in another sense ('liquid' as in water)
+            sure_no = a.known and a.truth.f < 0.5 and a.truth.c >= 0.7
+            other = self._other_sense_isa(q.s, s, q.o, o, subject_too=not sure_no)
             if other:
                 return other
+        elif not a.known and q.r not in ("is",):
+            alt = self._other_pairs(q.s, s, q.r, None if q.r in self._RAW_OBJECT else q.o, o)
+            if alt is not None:
+                a = self._record(alt)
         v = self._verdict(a)
         if v is None:
             return "I don't know."
@@ -414,14 +422,28 @@ class Mind:
         d = d.split(";")[0].strip()
         return d if len(d) <= n else d[:n].rsplit(" ", 1)[0] + "\u2026"
 
-    def _other_sense_isa(self, word, s, o_word, o):
+    def _other_pairs(self, s_word, s, r, o_word, o):
+        """Another reading of the words that the memory has an answer for
+        ('how many months has a year': the calendar month or the time unit)."""
+        if self._own(s):
+            return None
+        s_c = [s] + self.kb.other_senses(s_word, s)[:3]
+        o_c = [o] + (self.kb.other_senses(o_word, o)[:3] if o_word else [])
+        for _, k, t in sorted((i + j, k, t) for i, k in enumerate(s_c)
+                              for j, t in enumerate(o_c) if (k, t) != (s, o)):
+            b = self.kb.ask(k, r, t)
+            if b.known:
+                return b
+        return None
+
+    def _other_sense_isa(self, word, s, o_word, o, subject_too=True):
         """'Is gold a metal?': a word is an X if any of its senses is (gold
         the element), as long as the word is not one of the user's own."""
         if self._own(s):
             return None
         targets = [o] + self.kb.other_senses(o_word, o)
         no = None
-        for k in [s] + self.kb.other_senses(word, s):
+        for k in [s] + (self.kb.other_senses(word, s) if subject_too else []):
             for t in targets:
                 if (k, t) == (s, o):
                     continue
@@ -525,7 +547,16 @@ class Mind:
         return self._cap(phrase) + "."
 
     def _q_how_many(self, q):
+        s_word, o_word = q.s, q.o
         q.s, q.o = self._c(q.s), self._c(q.o)
+        if self.kb.get(q.s, "has", q.o) is None and not self._own(q.s):
+            for k in [q.s] + self.kb.other_senses(s_word, q.s)[:3]:
+                hit = next((t for t in [q.o] + self.kb.other_senses(o_word, q.o)[:3]
+                            if (g := self.kb.get(k, "has", t)) is not None and g.qty
+                            and g.qty > 0), None)
+                if hit is not None:
+                    q.s, q.o = k, hit
+                    break
         f = self.kb.get(q.s, "has", q.o)
         if f is None:
             for m, mem in self.kb.categories_of(q.s):
@@ -594,6 +625,8 @@ class Mind:
         word = q.s
         senses = self._senses_of(word)
         s = next((k for k in senses if self._knows(k)), senses[0])
+        if word in self._caps and not self._own(senses[0]):
+            s = next((k for k in senses if k in self.kb.display and k in self.kb.definitions), s)
         kb = self.kb
         proper = s in kb.display
         subj = kb.ref(s) if proper else kb.name(s, True) if kb.generic(s) else kb.ref(s)

@@ -1,7 +1,7 @@
 /*
  * mnemo - command line front end for the predictive cortex.
  *
- *   mnemo bench    --train FILE... --test FILE [--static] [model options]
+ *   mnemo bench    --train FILE... --test FILE [--static] [--dump BITS.f32] [model options]
  *   mnemo train    -o MODEL [model options] FILE...
  *   mnemo eval     -m MODEL [--static] FILE
  *   mnemo gen      -m MODEL [--prompt TEXT] [-n N] [--temp T] [--seed S]
@@ -83,6 +83,7 @@ typedef struct {
     const char *train[64];
     int ntrain;
     const char *test;
+    const char *dump;
     const char *model;
     const char *out;
     const char *prompt;
@@ -106,6 +107,8 @@ static void parse(int argc, char **argv, Opts *o) {
 #define NEXT() (i + 1 < argc ? argv[++i] : (fprintf(stderr, "missing value for %s\n", a), exit(1), ""))
         if (!strcmp(a, "--train"))
             o->train[o->ntrain++] = NEXT();
+        else if (!strcmp(a, "--dump"))
+            o->dump = NEXT();
         else if (!strcmp(a, "--test"))
             o->test = NEXT();
         else if (!strcmp(a, "--tb"))
@@ -181,13 +184,29 @@ static double train_files(mn_model *m, const char **files, int nf, size_t *total
     return bits;
 }
 
-static void report_eval(const char *name, mn_model *m, const char *path, int is_static) {
+static void report_eval(const char *name, mn_model *m, const char *path, int is_static,
+                        const char *dump) {
     size_t n;
     uint8_t *b = read_file(path, &n);
     mn_set_learning(m, !is_static);
     mn_lex_stats(m, NULL, NULL, 1);
     double t0 = now_sec();
-    double bits = mn_observe(m, b, n);
+    double bits = 0;
+    if (dump) { /* surprise of every byte, float32, for mixing with other models */
+        FILE *f = fopen(dump, "wb");
+        if (!f) {
+            fprintf(stderr, "cannot write %s\n", dump);
+            exit(1);
+        }
+        for (size_t i = 0; i < n; i++) {
+            float x = (float)mn_observe_byte(m, b[i]);
+            bits += x;
+            fwrite(&x, sizeof x, 1, f);
+        }
+        fclose(f);
+    } else {
+        bits = mn_observe(m, b, n);
+    }
     double dt = now_sec() - t0;
     size_t tok = count_tokens(b, n);
     printf("%s %s: %zu bytes, %.4f bpc, %zu tokens, %.2f token-ppl, %.2f s (%.2f MB/s)%s\n", name,
@@ -216,7 +235,7 @@ static int cmd_bench(Opts *o) {
         printf("train: %zu bytes, %.4f bpc (online), %.2f s (%.2f MB/s)\n", total, bits / total, dt,
                total / dt / 1e6);
     }
-    if (o->test) report_eval("test", m, o->test, o->is_static);
+    if (o->test) report_eval("test", m, o->test, o->is_static, o->dump);
     mn_free(m);
     return 0;
 }
@@ -256,7 +275,7 @@ static int cmd_eval(Opts *o) {
         return 1;
     }
     mn_model *m = load_or_die(o->model);
-    report_eval("eval", m, o->pos[0], o->is_static);
+    report_eval("eval", m, o->pos[0], o->is_static, o->dump);
     mn_free(m);
     return 0;
 }

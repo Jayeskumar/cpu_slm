@@ -10,6 +10,20 @@
 # Disputed capitals and city-states named like their country are left out.
 
 # ---------------------------------------------------------------- animals
+# Category statements come first: they settle which sense of a word the rest
+# of the pack means ('dolphin' the whale, not the dolphinfish).
+Dogs are animals.
+Dolphins are mammals.
+Seals are mammals.
+Bats are mammals.
+Ducks are birds.
+Eagles are birds.
+Owls are birds.
+Sharks are fish.
+Frogs are amphibians.
+Snakes are reptiles.
+Bees are insects.
+Ants are insects.
 Animals need food.
 Animals need water.
 Animals need air.
@@ -142,6 +156,8 @@ Cats are bigger than mice.
 Mice are bigger than ants.
 
 # ---------------------------------------------------------------- plants and food
+Trees are plants.
+Grass is a plant.
 Plants need water.
 Plants need sunlight.
 Plants need air.
@@ -189,6 +205,17 @@ Wine is made of grapes.
 Chocolate is made of cocoa.
 Paper is made of wood.
 Glass is made of sand.
+
+# ---------------------------------------------------------------- things people make
+# (WordNet files buses and trains under 'public transport', not 'vehicle')
+Buses are vehicles.
+Trains are vehicles.
+Cars are vehicles.
+Bicycles are vehicles.
+Hammers are tools.
+Cars have wheels.
+Bicycles have two wheels.
+Cars have four wheels.
 
 # ---------------------------------------------------------------- the body
 The heart pumps blood.

@@ -34,3 +34,12 @@ def test_learns_a_repeating_sequence():
     for _ in range(4):
         last = m.run_epoch(seq, batch=4, bptt=10, lr=1.0)
     assert last < 1.2 < first
+
+
+def test_token_logprobs_cover_every_token_once():
+    seq = np.array([0, 1, 2, 3, 4, 5] * 50 + [0, 1, 2])     # does not divide into columns
+    m = LSTMLM(vocab=6, hidden=8, layers=1, dropout=0.0, seed=2)
+    lp = m.token_logprobs(seq, batch=4, bptt=7)
+    assert lp.shape == (len(seq) - 1,) and np.all(lp < 0)
+    one = m.token_logprobs(seq, batch=1, bptt=1000)            # a single stream: same tokens
+    assert one.shape == lp.shape
