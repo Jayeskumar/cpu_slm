@@ -5,12 +5,15 @@ counting, hashing, hypervectors and logic instead of gradient-trained neural
 networks, go towards language and human-like intelligence in a small memory and
 compute budget?
 
-This document has two parts:
+This document has three parts:
 
 * **Part I: survey.** What is known about non-neural (or minimally neural)
   approaches to prediction, memory, meaning and reasoning, with numbers.
 * **Part II: the system.** The design that came out of the survey, how it
   maps onto brain systems, what it measurably does, and what it cannot do.
+* **Part III: knowledge and weights.** Feeding it general knowledge (WordNet,
+  a curated pack, your own files), adding a small CPU-trained LSTM, and an
+  honest comparison with Gemma 1.
 
 Figures from the literature carry a source link. Three research agents
 gathered them. Their web fetches were mostly blocked, so many figures come from
@@ -621,9 +624,10 @@ syntax. Global coherence is absent, as § 9 explains.
 
 ### 9. What this is not: honest limitations
 
-* **Not a general conversational AI.** It knows what it has been told or has
-  read, and nothing more. Without a reading phase it has no world knowledge,
-  and with one it knows only what the parser could extract.
+* **Not a general conversational AI.** It knows what it has been told, has
+  read, or was fed (WordNet and the knowledge pack, Part III), and nothing
+  more. It has no open-domain knowledge of events, people or numbers beyond
+  those sources.
 * **Generation is locally fluent and globally incoherent.** The cortex
   reproduces the style, vocabulary and short-range syntax of what it read. It
   keeps no plan or topic beyond a few sentences, like every model in the
@@ -671,12 +675,324 @@ syntax. Global coherence is absent, as § 9 explains.
    BLiMP-style minimal pairs with `Cortex.choose`, which needs no training
    change.
 7. **Official benchmarks:** bAbI and enwik8, when the files are reachable.
-8. **Hybrid option:** the 2026 Hutter Prize result shows that a tiny
-   pretrained network (about 6M parameters, int4) added to context mixing
-   closes most of the gap to large models. It could be an optional "intuition"
-   column, at the cost of the no-neural-network constraint.
+8. **A tighter hybrid** (a first version is in Part III): feed the LSTM's
+   word distribution into the cortex as one more mixer input, so that the
+   gates learn when to trust it, as the 2026 Hutter Prize entries do with a
+   tiny pretrained network.
+9. **More knowledge:** ConceptNet-style common-sense relations (used-for,
+   capable-of, located-at), and Wikidata facts with dates and numbers.
 
-### 11. References
+---
+
+## Part III: feeding it knowledge, and adding weights
+
+Two follow-up questions shaped this part: can the system be fed general facts
+in bulk, and can it use weight-based learning (for example Gemma 1's weights)
+while staying small, and be better than Gemma 1?
+
+### 11. General knowledge without a neural network
+
+#### 11.1 Sources
+
+`python3 -m mnemo feed` fills the declarative memory from three kinds of source
+(`mnemo/feed.py`):
+
+* **WordNet 3.0** (Miller 1995). Every noun synset becomes a concept:
+  * 82,115 concepts with 82,115 definitions;
+  * 84,427 is-a links (hypernyms and instances);
+  * 18,991 part, substance and place links: "a bird has wings", "water is made
+    of hydrogen", "Paris is in France";
+  * 4,024 adjective opposites;
+  * 168 capitals and 156 currencies, read from definitions with clause-initial
+    patterns, so "a *former* capital of China" and "the *crime* capital of
+    Italy" do not count.
+* **A curated knowledge pack.** `knowledge/general.txt` holds 567 lines of the
+  same controlled English the mind reads in conversation, which yield about 870
+  facts. It covers:
+  * animals with their defaults and exceptions;
+  * plants, food, the body, matter and astronomy;
+  * 154 countries with capitals and continents;
+  * 46 currency and 57 language statements.
+  Pack facts replace WordNet's older capitals and currencies (WordNet dates from
+  2006): Naypyidaw, Astana, Gitega, Kyiv.
+* **Your own files**, in any of three formats:
+  * plain English, one statement per line;
+  * TSV triples: `subject<TAB>relation<TAB>object[<TAB>confidence]`;
+  * JSON lines: `{"s": .., "r": .., "o": .., "c": ..}`.
+
+The fed brain has 108,009 facts about 85,150 concepts. It takes 23 MB on disk
+and about 200 MB of RAM once loaded, and takes 5–8 s to build.
+
+#### 11.2 Word senses: the hard part
+
+A dictionary is useless to a reasoner that confuses its senses. A plain lemma
+import makes several such mistakes:
+* "whale" is first a *very large person*;
+* "metal" has no entry of its own: it is a synonym under *metallic element*;
+* gold is first *coins*;
+* "yen" is first a *yearning*;
+* "China" is the country, but "china" is porcelain;
+* "Chad" is first Lake Chad;
+* one capitalised sense of "Guinea" is an ethnic slur.
+
+The importer and the mind handle this in six ways.
+
+* **One concept per synset.** A concept is keyed by its first word when it is
+  that word's dominant sense (`dog`), and by `word#k` otherwise (`gold#3`, the
+  element). Every word keeps its list of senses. Synonyms map to the dominant
+  concept (`metal` → `metallic element`).
+* **Case matters.** A capitalised word prefers a proper-noun sense ('China'),
+  a lower-case one a common-noun sense ('china'). Acronym senses never capture
+  ordinary words ('SALT' is not 'Salt').
+* **Exceptions to "first sense dominant".** An animal sense beats a person
+  or food sense ('whale', 'chicken'). A common first name gets no default
+  person sense, so a story's Mary is not the Virgin Mary. A sense whose
+  definition starts "a former ..." is demoted: 'Russia' is the federation, not
+  the Soviet Union.
+* **Sense choice from what is known.** For a new statement, the system tries
+  sense pairs of subject and object, most frequent first, and picks the first
+  pair that fits what it already knows. "Chad is a country" picks the
+  republic. "The currency of Japan is the yen" picks the money, which WordNet
+  already ties to Japan. "Elephants have trunks" picks the proboscis. This is a
+  small, knowledge-based relative of Lesk's algorithm.
+* **One sense per discourse** (Gale, Church & Yarowsky 1992). A sense chosen
+  once is *primed* and stays chosen. The pack therefore states categories first
+  ("Dolphins are mammals.", "Kiwis are birds.", "Trees are plants."). Later
+  lines then get the right sense: "kiwis cannot fly" must not land on the
+  fruit. A negated is-a corrects the sense that would otherwise hold: "Pluto
+  is not a planet" is about the planet, not the god.
+* **The speaker's word is kept for display.** WordNet files countries under
+  the synset 'state, nation, country, …'. Once the pack has said "country",
+  the answers say "country" too.
+
+Questions read the same way. If the usual sense gives no answer, other sense
+pairs are tried ("Is gold a metal?" → "Yes, in the sense of a soft yellow
+malleable ductile … metallic element"). A *confident* "no" from the usual sense
+is never overridden by a rare one. A shark is not a mammal, whatever a "shark"
+of a person may be.
+
+#### 11.3 A closed world where the taxonomy is curated
+
+In an open world, "Is a whale a fish?" can only be answered "I don't know".
+People answer "No, it's a mammal", because they treat sibling categories as
+disjoint. Mnemo does the same, but only where the taxonomy comes from a curated
+source.
+
+* **Different branches.** If s and o sit on different branches under a common
+  parent that o is close to, the answer is "No. Whales are mammals; mammals and
+  fish are different kinds of vertebrate."
+* **Confidence.** Biological taxa (WordNet's animal and plant files) are
+  disjoint by construction, so the confidence is 0.7 ("No"). Other WordNet
+  siblings often overlap. "Chemical" and "mineral" are an example, so there the
+  confidence is 0.45 ("Probably not").
+* **Places.** Continents and countries do not overlap: "Is Tokyo in Europe?" →
+  "No. Tokyo is in Japan, which is in Asia, and Asia is not part of Europe."
+* **Exceptions.** A told exception beats the inherited chain: "Pluto is not a
+  planet" beats "superior planets are planets".
+
+#### 11.4 Choosing between conclusions
+
+The NARS choice rule picks the more confident conclusion. On top of it, three
+preferences apply in order, following Touretzky's inferential distance.
+1. What is said about the thing itself wins.
+2. Otherwise, what is stated about a kind beats a guess from examples: "mammals
+   cannot fly" beats "judging from bats, placentals can fly".
+3. Otherwise, the most specific category with an opinion wins.
+
+Induction from a single example is allowed when the user gave the example: "Lily
+is a swan; Lily is white" is a deliberate hint. Reference data needs two
+examples: "salt is made of chlorine" says nothing about other compounds.
+
+#### 11.5 Results
+
+`tests/knowledge_probe.py` asks a fed brain 159 questions:
+* is-a, with yes and no answers;
+* capitals, places, currencies and languages;
+* parts, materials and counts;
+* abilities with exceptions, sizes, definitions and opposites.
+
+| Question set | Correct |
+|---|---|
+| dev (used while building the importer and pack) | 37/37 |
+| held-out, first run, before any fix | **57/64 (89%)** |
+| the same set after fixing what it exposed (now development data) | 64/64 |
+| held-out 2, written after those fixes, run once | **58/58** |
+
+The median answer time is 0.1–0.2 ms. The seven first-run misses showed real
+mechanism bugs, and the fixes were general mechanisms, not per-question
+patches:
+* rare senses overriding a clear "no" (shark the person);
+* pack facts landing on the wrong sense (factory plants);
+* a guess from bats beating "mammals cannot fly";
+* 'Napoleon' resolving to the pastry;
+* no closed world for places ("Is Tokyo in Europe?");
+* two sense-ordering problems (dolphinfish; month).
+
+Held-out 2 checks that the fixes generalise. The caveat: all three sets were
+written by the same author, in the phrasing the reader understands, about
+topics that WordNet and the pack cover. They measure the reasoning and the
+import, not open-domain question answering.
+
+The 19 story tasks still score 100% with the whole 108k-fact brain loaded
+underneath (30 stories per task). They take 68 ms per story instead of 0.7 ms.
+
+```text
+you> Is a whale a fish?
+mnemo> No. Whales are mammals; mammals and fish are different kinds of vertebrate.
+you> Is Tokyo in Europe?
+mnemo> No. Tokyo is in Japan, which is in Asia, and Asia is not part of Europe.
+you> How many legs does a beetle have?
+mnemo> Six. Beetles are insects, and insects have six legs.
+you> Who was Mozart?
+mnemo> Mozart: prolific Austrian composer and child prodigy; master of the classical style in all its forms of his time (1756-1791). Mozart is a composer, a musician, an artist and a creator. Also called Wolfgang Amadeus Mozart.
+you> Kiri is a kiwi.
+mnemo> OK.
+you> Can Kiri fly?
+mnemo> No. Kiri is a kiwi, and kiwis cannot fly.
+you> Is a mouse bigger than an elephant?
+mnemo> Probably not. It is the other way round: elephants are bigger than horses, which are bigger than dogs, which are bigger than cats, which are bigger than mice.
+```
+
+#### 11.6 Limitations of the fed brain
+
+* **Coverage is WordNet's plus the pack's.** WordNet is a dictionary: it has
+  no dates, populations or events, and many common-sense facts are missing
+  ("a bus is a vehicle" is not in its taxonomy, so the pack adds it).
+* **The reader is still a controlled-English parser.** "Is a chair furniture?"
+  must be asked as "Is a chair a kind of furniture?".
+* **Sense errors remain possible** wherever neither the data nor the discourse
+  disambiguates a word.
+
+### 12. Weight-based learning: a small LSTM, and the hybrid
+
+#### 12.1 The model
+
+`mnemo/neural.py` is a word-level LSTM language model in plain numpy, with
+forward and backward passes written out by hand. `tests/test_neural.py` checks
+the gradients against finite differences (tolerance 1e-5).
+
+* **Architecture.** Two layers of 512 units, with tied input/output embeddings
+  (Press & Wolf 2017).
+* **Regularisation.** Variational dropout of 0.5 on non-recurrent connections
+  (Gal & Ghahramani 2016).
+* **Training.** Truncated BPTT over 35 steps, SGD with gradient clipping at 5
+  and plateau learning-rate decay, as in Zaremba et al. 2014.
+* **Size.** 9.33M parameters, an 18.8 MB file in fp16.
+* **Cost.** On PTB, one epoch takes about 7.5 minutes on 3 CPU threads.
+
+The training script, `tools/train_lstm.py`, resumes from checkpoints.
+
+#### 12.2 Results on Penn Treebank (test perplexity)
+
+| Model | Parameters / memory | PPL |
+|---|---|---|
+| Kneser-Ney 5-gram (our exact reference) | counts | 141.2 |
+| Mnemo, long-term memory frozen | 138 MB of counts | 125.4 |
+| Mnemo, online | 138 MB of counts | 113.0 |
+| LSTM, 2×512, numpy on CPU (ours; interim, epoch 6) | 9.3M weights | 112.8 |
+| **Mnemo frozen + LSTM** (weight tuned on validation; interim) | both | **92.8** |
+| **Mnemo online + LSTM** (weight tuned on validation; interim) | both | **86.6** |
+| Mnemo online + LSTM, weight learned online (no validation data; interim) | both | 86.4 |
+| *for reference:* RNNLM + KN5 + cache (Mikolov et al. 2011) | | 97.5 |
+| *for reference:* LSTM medium, 650 units (Zaremba et al. 2014) | 20M, GPU | 82.7 |
+| *for reference:* LSTM large, 1500 units (Zaremba et al. 2014) | 66M, GPU | 78.4 |
+
+The mixture is linear at the word level. Mnemo's surprise for a word is the
+sum over its letters plus the space that ends it (the line break for `<eos>`).
+Its probabilities over in-vocabulary words sum to at most one, so the mixed
+perplexity is an honest upper bound (`tools/hybrid_eval.py`). A context-gated
+weight (bins of the previous word's surprise) gained only 0.1 perplexity, so the
+tool uses one weight. The numbers above are from an interim LSTM checkpoint
+(epoch 6 of 25); training continues.
+
+#### 12.3 Why the mixture works
+
+The two learners make different errors.
+* **Counting memories** remember exactly, in one pass. They adapt within the
+  document, which is the cache effect, and they are sharp on frequent and
+  repeated n-grams.
+* **The LSTM** generalises across similar contexts, through shared embeddings
+  and a continuous state. It is better on rare and unseen combinations.
+
+This is the Complementary Learning Systems picture (McClelland et al. 1995): a
+fast, exact, episodic learner next to a slow, generalising one. It is also why
+KN5+cache mixed with an RNNLM was the state of the art on PTB in 2011, and why
+the best compressors add a small network to context mixing.
+
+### 13. Gemma 1: weights, distillation, and an honest comparison
+
+#### 13.1 Why Gemma's weights are not inside Mnemo
+
+* **They could not be obtained here.** The weights sit behind a licence gate on
+  Hugging Face and Kaggle, and both are unreachable from this sandbox.
+* **They are not small.** Gemma 2B has 2.51 billion parameters: 524M embedding
+  and 1.98B non-embedding. That is about 5 GB in 16-bit, and about 1.5 GB even
+  at 4 bits. It was trained on 3 trillion tokens on 512 TPUv5e chips
+  ([Gemma report](https://storage.googleapis.com/deepmind-media/gemma/gemma-report.pdf),
+  [arXiv:2403.08295](https://arxiv.org/abs/2403.08295)). Loading it would make
+  this project a 200× larger wrapper around Gemma.
+* **Its parts do not transfer one by one.** A transformer's knowledge is spread
+  across all its weights. The 256k-entry embedding table on its own is a
+  decent word-similarity space (much like our PPMI-SVD memory), but it carries
+  no facts or reasoning.
+
+#### 13.2 What a large model can still contribute
+
+With Gemma, or any LLM, running on your own machine, three routes keep Mnemo
+small.
+
+1. **Facts.** `tools/teacher_pack.py` asks the teacher, through Ollama or any
+   OpenAI-compatible server, for simple statements about each topic ("X is a
+   Y", "Xs can Z", "the capital of X is Y"). It keeps the lines Mnemo's reader
+   understands and drops chatter, headings and long sentences. Then `python3
+   -m mnemo feed --source teacher --conf 0.7 teacher.txt` adds them. Every fact
+   keeps its source and its lower confidence, so the user's statements and
+   WordNet win a conflict.
+2. **Text.** Generate a corpus and let the cortex read it (`python3 -m mnemo
+   train`). This is distillation into counts.
+3. **Soft targets.** Train the LSTM on teacher-generated text, or on teacher
+   probabilities (Hinton et al. 2015). This is distillation into a
+   few-million-weight network.
+
+#### 13.3 Comparison
+
+| | Gemma 1 2B | Mnemo (this repository) |
+|---|---|---|
+| Parameters / memory | 2.51B weights (~5 GB) | counts + facts: 23 MB knowledge brain, 138 MB language cortex; optional 9.3M-weight LSTM (19 MB) |
+| Training | 3T tokens, 512 TPUv5e | 5 MB of text; 40 s on one CPU core (cortex), ~3 h on 3 cores (LSTM); 5–8 s to import WordNet |
+| MMLU (5-shot) | 42.3 | not attempted: it cannot read exam questions |
+| HellaSwag / PIQA / ARC-e (0-shot) | 71.4 / 77.3 / 73.2 | not attempted |
+| GSM8K (maj@1) / HumanEval | 17.7 / 22.0 | not attempted: no arithmetic word problems, no code |
+| PTB perplexity | not reported (different tokenizer) | 113.0 counts only; 86.6 mixed with the LSTM (interim) |
+| General-knowledge probe (§11.5) | not measured here | 89% held-out (first run), 100% on a second held-out set |
+| Story reasoning (bAbI-style, ours) | not measured here | 100% on 19 tasks |
+| Teach a new fact | fine-tuning, or keep it in the prompt | one sentence; used immediately and saved |
+| Explains its answers | no faithful trace | every answer has its derivation and a confidence |
+| Says "I don't know" | not reliably (small LMs hallucinate) | whenever evidence is missing |
+| Compute per answer | ~5 GFLOPs per generated token (2 × parameters) | ~0.1–1 ms of one CPU core |
+
+Gemma's benchmark numbers are from Table 6 of the Gemma report.
+
+#### 13.4 What "better than Gemma 1" can and cannot mean
+
+* **It cannot mean broad capability.** Gemma 2B was trained with roughly
+  4.5·10²² FLOPs (6 × parameters × tokens). Our LSTM used about 10¹⁵, and the
+  counting cortex about 10¹¹ operations. That is a factor of 10⁷ to 10¹¹ less.
+  Nothing in the literature, and nothing here, closes that gap on open-ended
+  language understanding. On MMLU, HellaSwag, GSM8K or HumanEval, Mnemo would
+  score at chance or not at all. Saying otherwise would be dishonest.
+* **It can mean specific, measurable axes,** and on these Mnemo is better by
+  design:
+  * it is 30–200× smaller;
+  * it is orders of magnitude cheaper per answer;
+  * it learns new facts in one shot and updates them without retraining;
+  * every conclusion is exact within its domain and explained;
+  * its uncertainty is explicit, and it does not invent facts.
+* **The hybrid result shows the right use of weights.** A few million weights
+  next to the counting memories buy most of what weights buy in language
+  modelling, at a tiny fraction of an LLM's size.
+
+### 14. References
 
 **Compression and count-based language models**
 * M. Mahoney, *Data Compression Explained* (mirror):
@@ -751,6 +1067,28 @@ syntax. Global coherence is absent, as § 9 explains.
   https://memory.psych.missouri.edu/assets/doc/articles/2001/cowan-bbs-2001.pdf
 * M. Frank 2023, children vs LLM data:
   https://sites.socsci.uci.edu/~lpearl/colareadinggroup/readings/Frank2023_ChildrenLLMs.pdf
+
+**Knowledge, word senses and inheritance**
+* G. Miller, "WordNet: a lexical database for English", CACM 1995; WordNet 3.0
+  via the NLTK data mirror: https://github.com/nltk/nltk_data
+* W. Gale, K. Church & D. Yarowsky, "One sense per discourse", HLT 1992.
+* M. Lesk, "Automatic sense disambiguation using machine readable
+  dictionaries", SIGDOC 1986.
+* D. Touretzky, *The Mathematics of Inheritance Systems*, 1986 (inferential
+  distance).
+
+**Weights and mixtures**
+* W. Zaremba, I. Sutskever & O. Vinyals, "Recurrent neural network
+  regularization": https://arxiv.org/abs/1409.2329
+* O. Press & L. Wolf, "Using the output embedding to improve language
+  models": https://arxiv.org/abs/1608.05859
+* Y. Gal & Z. Ghahramani, "A theoretically grounded application of dropout in
+  recurrent neural networks": https://arxiv.org/abs/1512.05287
+* G. Hinton, O. Vinyals & J. Dean, "Distilling the knowledge in a neural
+  network": https://arxiv.org/abs/1503.02531
+* Gemma Team, "Gemma: open models based on Gemini research and technology",
+  2024: https://arxiv.org/abs/2403.08295 (PDF:
+  https://storage.googleapis.com/deepmind-media/gemma/gemma-report.pdf)
 
 **Small neural models, for calibration**
 * TinyStories: https://arxiv.org/abs/2305.07759

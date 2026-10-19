@@ -1,0 +1,7 @@
+# python3 -m mnemo feed --brain models/kbrain   (WordNet 3.0 + knowledge/general.txt)
+# python3 tests/knowledge_probe.py models/kbrain -v
+# held-out first run, before fixes: 57/64 (89%); misses were: shark/mammal, dolphin/fish,
+#   Tokyo/Europe, tree/leaves, year/months, dog/fly, Napoleon (see RESEARCH.md 11.5)
+dev       37/37 correct (100%), median 0.2 ms per question
+held-out  64/64 correct (100%), median 0.2 ms per question
+held-out 2 58/58 correct (100%), median 0.1 ms per question
