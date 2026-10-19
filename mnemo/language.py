@@ -25,7 +25,14 @@ _IRREGULAR_PLURALS = {
     "sheep": "sheep", "fish": "fish", "deer": "deer", "moose": "moose", "cacti": "cactus",
     "fungi": "fungus", "data": "data", "criteria": "criterion", "phenomena": "phenomenon",
     "dice": "die", "lice": "louse", "elves": "elf", "scarves": "scarf", "hooves": "hoof",
+    "emus": "emu", "kiwis": "kiwi", "gnus": "gnu", "menus": "menu", "taxis": "taxi",
+    "skis": "ski", "tutus": "tutu", "safaris": "safari", "tsunamis": "tsunami",
 }
+# -ses plurals of words that end in -s ('buses'); other -ses plurals drop only
+# the s ('horses', 'houses', 'roses')
+_S_STEMS = {"bus", "gas", "virus", "bonus", "campus", "cactus", "octopus", "status", "focus",
+            "chorus", "circus", "genius", "census", "walrus", "platypus", "atlas", "canvas",
+            "alias", "bias", "iris", "lens", "plus", "christmas", "fungus", "hippopotamus"}
 _NOT_PLURAL = {
     "is", "was", "has", "does", "this", "his", "hers", "its", "yes", "us", "bus", "gas", "plus",
     "news", "physics", "mathematics", "always", "perhaps", "species", "series", "chaos",
@@ -36,6 +43,14 @@ _NOT_PLURAL = {
     "famous", "nervous", "dangerous", "delicious", "curious", "various", "serious", "previous",
     "sometimes", "across", "afterwards", "towards", "besides", "unless", "nowhere", "gas",
 }
+# names and pluralia tantum that end in -s but are one thing (extended by the
+# WordNet importer with every such lemma)
+KEEP_PLURAL = {w.strip() for w in """netherlands|united states|united states of america|
+philippines|bahamas|brussels|honduras|laos|seychelles|comoros|barbados|maldives|andes|alps|
+himalayas|pyrenees|rockies|azores|marshall islands|solomon islands|united arab emirates|
+falkland islands|faroe islands|scissors|trousers|jeans|pants|clothes|shorts|pliers|tongs|
+binoculars|goggles""".split("|")}
+
 _IRREGULAR_VERBS = {
     "went": "go", "goes": "go", "gone": "go", "came": "come", "ran": "run", "ate": "eat",
     "eaten": "eat", "took": "take", "taken": "take", "gave": "give", "given": "give",
@@ -48,7 +63,7 @@ _IRREGULAR_VERBS = {
     "spoke": "speak", "stood": "stand", "told": "tell", "won": "win", "wore": "wear",
     "built": "build", "began": "begin", "broke": "break", "chose": "choose", "drove": "drive",
     "found": "find", "grew": "grow", "held": "hold", "hid": "hide", "led": "lead",
-    "lay": "lie", "lit": "light", "put": "put", "read": "read", "rode": "ride", "rose": "rise",
+"lit": "light", "put": "put", "read": "read", "rode": "ride", "rose": "rise",
     "shook": "shake", "shot": "shoot", "stole": "steal", "struck": "strike", "threw": "throw",
     "understood": "understand", "woke": "wake", "has": "have", "had": "have", "does": "do",
     "did": "do", "was": "be", "were": "be", "is": "be", "are": "be", "am": "be",
@@ -68,8 +83,9 @@ def singular(word):
         return w[:-2]
     if w.endswith(("ches", "shes", "xes", "zes", "sses")):
         return w[:-2]
-    if w.endswith("ses") and len(w) > 5:
-        return w[:-2]
+    if w.endswith("ses") and len(w) > 4:
+        stem = w[:-2]
+        return stem if stem in _S_STEMS or stem in _NOT_PLURAL else w[:-1]
     if w.endswith("s"):
         return w[:-1]
     return w
@@ -77,6 +93,10 @@ def singular(word):
 
 def is_plural(word):
     return singular(word) != word.lower()
+
+
+_O_ES = {"tomato", "potato", "hero", "echo", "torpedo", "veto", "mosquito", "volcano",
+         "buffalo", "domino", "embargo", "tornado", "mango", "flamingo", "cargo", "motto"}
 
 
 def plural(word):
@@ -87,7 +107,7 @@ def plural(word):
         return word
     if word.endswith("y") and len(word) > 2 and word[-2] not in "aeiou":
         return word[:-1] + "ies"
-    if word.endswith(("s", "x", "z", "ch", "sh")):
+    if word.endswith(("s", "x", "z", "ch", "sh")) or word.split()[-1] in _O_ES:
         return word + "es"
     return word + "s"
 
@@ -231,19 +251,32 @@ def normalize(sentence):
     return low, question
 
 
+_NAMES = set()   # names capitalised in the sentence being parsed ('Buenos Aires')
+
+
+def _whole(phrase):
+    """A name or plural-looking singular that must not be singularised."""
+    return phrase in KEEP_PLURAL or phrase in _NAMES
+
+
 def noun(np_text):
     """Canonical concept name of a noun phrase: determiners dropped, head
     noun singular.  'the big Red Apples' -> 'big red apple'."""
     words = [w for w in np_text.lower().split() if w not in _DETERMINERS]
-    if not words:
-        return ""
+    if not words or _whole(" ".join(words)):
+        return " ".join(words)
     words[-1] = singular(words[-1])
     return " ".join(words)
 
 
 def np_is_plural(np_text):
     words = np_text.lower().split()
-    return bool(words) and words[0] not in ("a", "an") and is_plural(words[-1])
+    if not words or words[0] in ("a", "an"):
+        return False
+    content = [w for w in words if w not in _DETERMINERS]
+    if content == words and words[-1] in ("fish", "sheep", "deer", "moose"):
+        return True               # bare 'fish can swim' is about fish in general
+    return not _whole(" ".join(content)) and is_plural(words[-1])
 
 
 def quantity(np_text):
@@ -371,8 +404,18 @@ def _split_and(text):
     return parts
 
 
-def parse_sentence(sentence, wm=None):
-    """Parse one sentence into a list of Fact / Event / Query / Command."""
+def parse_sentence(sentence, wm=None, names=()):
+    """Parse one sentence into a list of Fact / Event / Query / Command.
+    names: lower-cased names that were capitalised in the sentence."""
+    global _NAMES
+    _NAMES = set(names)
+    try:
+        return _parse_sentence(sentence, wm)
+    finally:
+        _NAMES = set()
+
+
+def _parse_sentence(sentence, wm=None):
     wm = wm or WorkingMemory()
     raw = sentence.strip()
     low, question = normalize(raw)
@@ -394,7 +437,7 @@ def parse_sentence(sentence, wm=None):
 
 
 def _looks_like_question(low):
-    if re.match(r"^(tell me|describe|explain|list|name)\b", low):
+    if re.match(r"^(tell (?:me|user)|describe|explain|list|name)\b", low):
         return True
     return bool(re.match(r"^(who|what|where|when|why|how|which|is|are|can|could|does|do|did|"
                          r"was|were|has|have)\b", low))
@@ -447,7 +490,11 @@ def _parse_statement(low, wm):
         return [Event("either_at", a, place=[noun(m["p"]), noun(m["q"])])]
 
     # negation markers
-    m = _rx(_s("s") + r" (?:is|are|was|were) not (?:a |an )?" + _s("o"))(low)
+    m = _rx(_s("s") + r" (?:is|are|was|were) not (?P<c>" + _COMP_RE + r") than " + _s("o"))(low)
+    if m:
+        return [Fact(_subject(m["s"], wm), COMPARATIVES[m["c"]], noun(m["o"]), False,
+                     generic=np_is_plural(m["s"]))]
+    m = _rx(_s("s") + r" (?:is|are|was|were) not " + _s("o"))(low)
     if m:
         return _fact_is(m["s"], m["o"], wm, positive=False)
     m = _rx(_s("s") + r" (?:can|could|will) not " + _s("o"))(low)
@@ -483,7 +530,8 @@ def _parse_statement(low, wm):
         return [Fact(_subject(m["s"], wm), "isa", noun(m["o"]), True, generic=True)]
     m = _rx(_s("s") + r" (?:is|are|was|were) (?P<c>" + _COMP_RE + r") than " + _s("o"))(low)
     if m:
-        return [Fact(_subject(m["s"], wm), COMPARATIVES[m["c"]], noun(m["o"]))]
+        return [Fact(_subject(m["s"], wm), COMPARATIVES[m["c"]], noun(m["o"]),
+                     generic=np_is_plural(m["s"]))]
     m = _rx(_s("s") + r" (?:is|are|was|were) (?P<d>north|south|east|west) of " + _s("o"))(low)
     if m:
         return [Fact(_subject(m["s"], wm), DIRECTIONS[m["d"]], noun(m["o"]))]
@@ -519,7 +567,8 @@ def _parse_statement(low, wm):
 
     # intransitive: "dogs bark", "the baby sleeps"
     words = low.split()
-    if 2 <= len(words) <= 4 and words[-1] not in _DETERMINERS:
+    if 2 <= len(words) <= 4 and words[-1] not in _DETERMINERS and \
+            verb_lemma(words[-2]) not in VERBS:     # not 'people need sleep'
         v = verb_lemma(words[-1])
         if (v in VERBS or v in INTRANSITIVE) and words[-1] != v or v in INTRANSITIVE:
             s_np = " ".join(words[:-1])
@@ -542,7 +591,10 @@ def _parse_statement(low, wm):
             return [Fact(s, "in", noun(o_np[3:]))]
         if v in ("feel", "become", "get", "seem") and o_np in FEELINGS:
             return [Fact(s, "is", o_np), Event("feel", s, obj=o_np)]
-        return [Fact(s, v, noun(o_np), True, -1 if np_is_plural(o_np) else None,
+        det = o_np.split()[0]
+        qty = -1 if np_is_plural(o_np) else 0 if det == "the" else 1 if det in ("a", "an") \
+            else None    # kept for rendering: 'orbits the sun', 'eats bamboo', 'likes an apple'
+        return [Fact(s, v, noun(o_np), True, qty,
                      generic=_generic_subject(s_np, low.split()[len(s_np.split())]))]
     return []
 
@@ -565,7 +617,8 @@ chase bite kill help visit build make use wear carry hold teach study speak watc
 grow produce contain cause prefer enjoy admire respect trust marry follow lead rule govern
 invent discover paint compose drive fly swim climb attack protect feed bring sell buy
 find meet call meet resemble support oppose defeat beat win lose sleep cook bake collect
-play guard serve visit inhabit cross border""".split())
+play guard serve visit inhabit cross border orbit conduct attract pump lay spin store
+absorb reflect carry pollinate digest""".split())
 
 
 def _split_svo(low):
@@ -658,8 +711,8 @@ def _parse_question(low, wm):
         wm.mention(e)
         return e
 
-    m = _rx(r"(?:what do you know about|tell me about|tell me everything about|describe) " +
-            _s("s"))(low)
+    m = _rx(r"(?:what do (?:you|mnemo) know about|what (?:does|do) mnemo know about|tell "
+            r"(?:me|user) (?:everything )?about|describe) " + _s("s"))(low)
     if m:
         return [Query("describe", ent(m["s"]))]
     m = _rx(r"(?P<a>[a-z]+) is to (?P<b>[a-z]+) as (?P<c>[a-z]+) is to(?: what)?")(low)
@@ -734,6 +787,12 @@ def _parse_question(low, wm):
     m = _rx(r"what (?:does|do|did) " + _s("s") + r" (?P<v>[a-z]+)")(low)
     if m:
         return [Query("objects", ent(m["s"]), verb_lemma(m["v"]))]
+    m = _rx(r"what (?:is|are) the opposite of " + _s("s"))(low)
+    if m:
+        return [Query("objects", noun(m["s"]), "opposite")]
+    m = _rx(r"(?:is|are) " + _s("s") + r" the opposite of " + _s("o"))(low)
+    if m:
+        return [Query("yesno", noun(m["s"]), "opposite", noun(m["o"]))]
     m = _rx(r"(?:who|what) (?:is|are|was|were) " + _s("o") + r"'s (?P<r>[a-z]+)")(low)
     if m:
         return [Query("subjects", r=m["r"] + "_of", o=ent(m["o"]), extra=m["r"])]
@@ -749,7 +808,7 @@ def _parse_question(low, wm):
     m = _rx(r"what (?:is|are) (?P<d>north|south|east|west) of " + _s("o"))(low)
     if m:
         return [Query("subjects", r=DIRECTIONS[m["d"]], o=ent(m["o"]))]
-    m = _rx(r"(?:what do you know about|tell me about|describe|who is|who are|what is|what are) "
+    m = _rx(r"(?:tell (?:me|user) about|describe|who is|who are|who was|what is|what are) "
             + _s("s"))(low)
     if m:
         return [Query("describe", ent(m["s"]))]
@@ -798,6 +857,13 @@ def _parse_question(low, wm):
     m = _rx(r"(?:does|do|did) " + _s("s") + r" (?:have|own) " + _s("o"))(low)
     if m:
         return [Query("yesno", ent(m["s"]), "has", quantity(m["o"])[1])]
+    m = re.match(r"^(?:does|do|did) (.+)$", low)
+    svo = _split_svo(m.group(1)) if m else None
+    if svo and svo[1] not in ("have", "own"):          # 'does copper conduct electricity'
+        s_np, v, o_np = svo
+        if v in ("live", "stay") and o_np.startswith(("in ", "at ")):
+            return [Query("yesno", ent(s_np), "in", noun(o_np[3:]))]
+        return [Query("yesno", ent(s_np), v, noun(o_np))]
     m = _rx(r"(?:does|do|did) " + _s("s") + r" (?P<v>[a-z]+)")(low)
     if m and m["v"] not in ("have", "own"):
         return [Query("yesno", ent(m["s"]), "does", verb_lemma(m["v"]))]

@@ -1,7 +1,8 @@
-"""Command line: python3 -m mnemo {chat,train,demo,generate,stats}
+"""Command line: python3 -m mnemo {chat,train,feed,demo,generate}
 
   chat      talk to a mind (teach it facts, ask questions, ask it to imagine)
   train     build a brain directory from text files (cortex + semantic memory)
+  feed      add general knowledge: WordNet, knowledge packs, your own fact files
   demo      a scripted tour of what the mind can do
   generate  continue a prompt with the predictive cortex
 """
@@ -45,6 +46,39 @@ def cmd_train(a):
     m.save(a.out)
     print(f"saved brain to {a.out}: {total / 1e6:.1f} MB read in {time.time() - t0:.0f} s, "
           f"cortex {cortex.memory_bytes / 2**20:.0f} MB")
+
+
+def cmd_feed(a):
+    """Feed general knowledge into a brain: WordNet, knowledge packs, and
+    your own fact files (plain English .txt, or .tsv / .jsonl triples)."""
+    from . import feed
+    m = load_mind(a.brain)
+    t0 = time.time()
+    if a.names and os.path.isdir(a.names):
+        print(f"names: {feed.load_names(a.names)} first names")
+    if a.wordnet and os.path.isdir(a.wordnet):
+        st = feed.load_wordnet(m.kb, a.wordnet)
+        print(f"WordNet: {st['concepts']} concepts, {st['isa']} is-a links, "
+              f"{st['part_of'] + st['has'] + st['made_of'] + st['in']} part/substance/place links, "
+              f"{st['definitions']} definitions ({time.time() - t0:.0f} s)")
+    elif a.wordnet:
+        print(f"(no WordNet at {a.wordnet}; run scripts/get_data.sh to fetch it)")
+    for name in a.pack or []:
+        added, failed = feed.load_pack(m, name)
+        print(f"pack {name}: {added} facts" + (f", {len(failed)} lines not understood: "
+                                              f"{failed[:3]}" if failed else ""))
+    for path in a.files:
+        if path.endswith((".tsv", ".jsonl", ".json")):
+            print(f"{path}: {feed.load_triples(m.kb, path)} triples")
+        else:
+            with open(path, encoding="utf-8") as f:
+                added, failed = feed.load_statements(m, f, source="file")
+            print(f"{path}: {added} facts" + (f", {len(failed)} sentences not understood"
+                                              if failed else ""))
+    m.save(a.brain)
+    n = sum(1 for f in m.kb.facts.values() if f.source != "innate")
+    print(f"saved {a.brain}: {n} facts about {len(m.kb.concepts())} concepts "
+          f"({time.time() - t0:.0f} s)")
 
 
 def load_mind(brain, learn=True):
@@ -152,6 +186,15 @@ def main(argv=None):
     c.add_argument("--save", action="store_true", help="save what was learned on exit")
     c.add_argument("--timing", action="store_true")
     c.set_defaults(fn=cmd_chat)
+    f = sub.add_parser("feed", help="feed general knowledge (WordNet, packs, fact files)")
+    f.add_argument("files", nargs="*", help="statements (.txt) or triples (.tsv, .jsonl)")
+    f.add_argument("--brain", default="models/brain")
+    f.add_argument("--wordnet", nargs="?", const="data/nltk/wordnet", default="data/nltk/wordnet",
+                   help="WordNet 3.0 directory (default data/nltk/wordnet)")
+    f.add_argument("--no-wordnet", dest="wordnet", action="store_const", const=None)
+    f.add_argument("--names", default="data/nltk/names", help="first-name lists")
+    f.add_argument("--pack", nargs="*", default=["general"], help="knowledge packs (knowledge/*.txt)")
+    f.set_defaults(fn=cmd_feed)
     d = sub.add_parser("demo", help="scripted tour")
     d.add_argument("--brain", default="models/brain")
     d.set_defaults(fn=cmd_demo)

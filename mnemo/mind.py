@@ -44,6 +44,7 @@ class Mind:
         self.learn_language = learn_language
         self.last = None            # (question text, Answer)
         self.surprises = []
+        self._caps = {}             # capitalised names in the current sentence
         if innate:
             self._innate()
 
@@ -81,7 +82,8 @@ class Mind:
         n = 0
         if extract:
             for sent in L.split_sentences(text):
-                p = L.parse_sentence(sent, self.wm)
+                names = self._remember_names(sent)
+                p = L.parse_sentence(sent, self.wm, names)
                 for it in p.items:
                     if isinstance(it, L.Fact):
                         self._tell(it, conf=0.6, source="read")
@@ -97,8 +99,8 @@ class Mind:
         if social is not None:
             return social
         sent = self._persons(sent)
-        self._remember_names(sent)
-        p = L.parse_sentence(sent, self.wm)
+        names = self._remember_names(sent)
+        p = L.parse_sentence(sent, self.wm, names)
         if not p.items:
             return self._fallback(sent)
         out = []
@@ -162,39 +164,134 @@ class Mind:
         return low
 
     def _remember_names(self, sent):
+        """Capitalised names in a sentence become display names; returns
+        them (lower case) so that 'China' can mean the country."""
         toks = re.findall(r"[A-Za-z][A-Za-z'-]*", sent)
-        i = 0
+        names, i = {}, 0
         while i < len(toks):
             t = toks[i]
             if t[0].isupper() and t.lower() not in _COMMON and \
                     (i > 0 or self._proper_at_start(toks)):
                 j = i
-                while j + 1 < len(toks) and toks[j + 1][0].isupper():
+                while j + 1 < len(toks) and (toks[j + 1][0].isupper() or toks[j + 1] == "of"
+                                             and j + 2 < len(toks) and toks[j + 2][0].isupper()):
                     j += 1
                 name = " ".join(toks[i:j + 1])
                 low = name.lower()
-                if low not in self.kb.categories:
-                    self.kb.display[low] = name
+                names[low] = name
+                key = self.kb.canon(low, proper=True)
+                if key not in self.kb.categories:
+                    self.kb.display[key] = name       # the speaker's name for it wins
                 i = j + 1
             else:
                 i += 1
+        self._caps = names
+        return names
 
     def _proper_at_start(self, toks):
         t = toks[0]
         low = t.lower()
+        if low in self.kb._MASS or self.kb.canon(low) in self.kb.mass:
+            return False      # 'Honey is sweet', 'Wood floats'
         if low in L.FEMALE or low in L.MALE:
             return True
         nxt = toks[1].lower() if len(toks) > 1 else ""
-        if L.is_plural(low) or nxt in ("are", "were", "have", "do", "live", "eat", "can") or \
-                nxt in L.VERBS or nxt in L.INTRANSITIVE:
+        if len(toks) > 1 and toks[1][:1].isupper():
+            return True       # 'Buenos Aires', 'South Africa'
+        if L.is_plural(low) and nxt in ("is", "was", "has"):
+            return True       # 'Algiers is', 'Caracas has'
+        if L.is_plural(low) or nxt in ("are", "were", "have", "do", "live", "eat", "can",
+                                       "cannot", "can't", "don't", "never", "always",
+                                       "often", "usually") or \
+                nxt in L.VERBS or nxt in L.INTRANSITIVE or low in self.kb._MASS:
             return False
+        if low in self.kb.senses and low not in self.kb.proper and \
+                self.kb.canon(low) not in self.kb.display:
+            return False      # a common noun ('Gold is a metal')
         if self.semantic is not None and low in self.semantic.index and \
                 self.semantic.index[low] < 3000:
             return False
         return True
 
     # ------------------------------------------------------------------ facts
+    _RAW_OBJECT = {"can", "does", "is", "opposite"}   # object is a verb or an adjective
+
+    def _c(self, x):
+        """The concept a word in the current sentence names."""
+        if not x:
+            return x
+        k = self.kb.canon(x, proper=x in self._caps)
+        if k != x and self.kb.bare(k) != x and k not in self.kb.display:
+            self.kb.surface[k] = x          # call it what the speaker calls it
+        return k
+
+    def canon_fact(self, f):
+        s_word, o_word = f.s, f.o
+        raw_o = f.r in self._RAW_OBJECT
+        if not raw_o:
+            f.o = self._c(f.o)
+        f.s = self._c(f.s)
+        if f.positive and self.kb.senses:
+            f.s, o = self._senses_for(s_word, f.s, f.r, None if raw_o else o_word, f.o)
+            if not raw_o:
+                f.o = o
+        elif f.r == "isa" and self.kb.senses:
+            # 'Pluto is not a planet' corrects the sense that is one (the planet, not the god)
+            for k in [f.s] + self.kb.other_senses(s_word, f.s)[:4]:
+                if self._fits(k, "isa", f.o):
+                    if k != f.s:
+                        self.kb.primed[s_word] = k
+                    f.s = k
+                    break
+        for word, key in ((s_word, f.s), (o_word, f.o)):
+            if word in self._caps and key not in self.kb.categories:
+                self.kb.display[key] = self._caps[word]
+        return f
+
+    def _senses_for(self, s_word, s, r, o_word, o):
+        """Word-sense choice from what is already known: 'Chad is a country'
+        means the republic, not the lake; 'the currency of Japan is the yen'
+        means the money, not a yearning.  Sense pairs are tried from the most
+        to the least frequent (sum of sense ranks); the choice then holds for
+        the rest of the discourse ('one sense per discourse', Gale, Church &
+        Yarowsky 1992)."""
+        def alts(word, key):
+            # a sense chosen earlier sticks unless an is-a statement says otherwise
+            if not word or self._own(key) or (r != "isa" and word in self.kb.primed):
+                return []
+            return self.kb.other_senses(word, key)[:4]
+        s_c, o_c = [s] + alts(s_word, s), [o] + alts(o_word, o)
+        if len(s_c) == 1 and len(o_c) == 1:
+            return s, o
+        pairs = sorted(((i + j, j, k, t) for i, k in enumerate(s_c) for j, t in enumerate(o_c)),
+                       key=lambda p: p[:2])
+        for _, _, k, t in pairs:
+            if self._fits(k, r, t):
+                if k != s:
+                    self.kb.primed[s_word] = k
+                if t != o:
+                    self.kb.primed[o_word] = t
+                return k, t
+        return s, o
+
+    _PLACE_RELS = {"in", "capital_of", "currency_of", "language_of"}
+
+    def _fits(self, k, r, t):
+        kb = self.kb
+        if r == "isa":
+            a = kb.ask(k, "isa", t)
+            return a.known and a.truth.f >= 0.5 and a.how in ("direct", "transitivity")
+        if kb.get(k, r, t) is not None:
+            return True
+        if r in self._PLACE_RELS and t is not None:
+            if kb.get(k, "in", t) is not None:
+                return True
+            a = kb.ask(k, "in", t)
+            return a.truth.f >= 0.5 and a.how in ("direct", "transitivity")
+        return False
+
     def _tell(self, f, conf=0.9, source="told"):
+        self.canon_fact(f)
         if f.r in ("north_of", "south_of", "east_of", "west_of"):
             self.world.add_direction(f.s, f.r, f.o)
         prior = self.kb.ask(f.s, f.r, f.o)
@@ -293,19 +390,71 @@ class Mind:
             if r is not None:
                 self._record(Answer(Truth(1.0 if r == "yes" else 0.0, 0.9), [], "episodic"))
                 return {"yes": "Yes.", "no": "No.", "maybe": "Maybe."}[r]
-        a = self._record(self.kb.ask(q.s, q.r, q.o))
+        s = self._c(q.s)
+        o = q.o if q.r in self._RAW_OBJECT else self._c(q.o)
+        a = self._record(self.kb.ask(s, q.r, o))
+        if q.r == "isa" and not (a.known and a.truth.f >= 0.5):
+            other = self._other_sense_isa(q.s, s, q.o, o)
+            if other:
+                return other
         v = self._verdict(a)
         if v is None:
             return "I don't know."
         self.kb.use(*[p for p in a.premises if isinstance(p, Fact)])
         if a.how == "direct":
             return f"{v}."
-        return f"{v}. {self.kb.explain(a)}"
+        return f"{v}. {self.kb.explain(a, brief=True)}"
+
+    def _own(self, x):
+        """Has the user told me things about x (rather than only WordNet)?"""
+        return any(f.source not in self.kb.authority for f in self.kb.out(x))
+
+    def _gloss(self, x, n=90):
+        d = self.kb.definitions.get(x, "")
+        d = d.split(";")[0].strip()
+        return d if len(d) <= n else d[:n].rsplit(" ", 1)[0] + "\u2026"
+
+    def _other_sense_isa(self, word, s, o_word, o):
+        """'Is gold a metal?': a word is an X if any of its senses is (gold
+        the element), as long as the word is not one of the user's own."""
+        if self._own(s):
+            return None
+        targets = [o] + self.kb.other_senses(o_word, o)
+        no = None
+        for k in [s] + self.kb.other_senses(word, s):
+            for t in targets:
+                if (k, t) == (s, o):
+                    continue
+                b = self.kb.ask(k, "isa", t)
+                if b.known and b.truth.f >= 0.5 and b.how in ("direct", "transitivity") \
+                        and b.truth.c >= 0.5:
+                    self._record(b)
+                    sense = f", in the sense of {self._gloss(k)}" if k != s and \
+                        self._gloss(k) else ""
+                    v = "Yes" if b.truth.c >= 0.7 else "Probably"
+                    if b.how == "direct" and k == s:
+                        return f"{v}."
+                    return f"{v}{sense}. {self.kb.explain(b, brief=True)}"
+                if no is None and k == s and b.how == "taxonomy" and \
+                        not self.kb.ask(s, "isa", o).known:
+                    no = b        # 'Is a dog a plant?': the botanical plant, not the factory
+        if no is not None:
+            self._record(no)
+            return f"No. {self.kb.explain(no, brief=True)}"
+        return None
+
+    def _senses_of(self, word):
+        """The concept a word names now, then its other senses."""
+        k = self._c(word)
+        return [k] + self.kb.other_senses(word, k)
 
     def _q_objects(self, q):
-        ans = self.kb.objects(q.s, q.r)
-        if q.r == "has" and not ans:
-            ans = self.kb.objects(q.s, "has")
+        ans = []
+        for k in self._senses_of(q.s):
+            ans = self.kb.objects(k, q.r)
+            if ans:
+                q.s = k
+                break
         if not ans:
             return "I don't know."
         self._record(ans[0])
@@ -313,17 +462,38 @@ class Mind:
             verbs = [("probably " if a.truth.c < 0.7 else "") + a.value for a in ans[:6]]
             subj = self.kb.name(q.s, True) if self.kb.generic(q.s) else self.kb.ref(q.s)
             return self._cap(f"{subj} can {self._join(verbs)}.")
-        parts = []
+        if q.r == "opposite":
+            return self._cap(self._join([a.value for a in ans[:3]])) + "."
+        sure, unsure = [], []
         for a in ans[:5]:
             qty = self._qty(q.s, q.r, a.value)
             if qty is None and a.premises and isinstance(a.premises[-1], Fact):
                 qty = a.premises[-1].qty
-            f = Fact(q.s, q.r, a.value, a.truth, qty)
-            phrase = self.kb.say(f)
-            if a.truth.c < 0.7:
-                phrase = "probably " + phrase if not phrase.startswith("probably") else phrase
-            parts.append(phrase)
-        return self._cap(self._join(parts)) + "."
+            phrase = self.kb.say(Fact(q.s, q.r, a.value, a.truth, qty))
+            (sure if a.truth.c >= 0.7 else unsure).append(phrase)
+        head, rest = self._merge(sure + unsure)
+        if head is None:
+            parts = sure + ["probably " + p for p in unsure]
+            return self._cap(self._join(parts)) + "."
+        sure_rest, unsure_rest = rest[:len(sure)], rest[len(sure):]
+        text = head + " " + self._join(sure_rest) if sure_rest else ""
+        if unsure_rest:
+            maybe = "probably " + self._join(unsure_rest)
+            text = f"{text}, and {maybe}" if text else f"{head} {maybe}"
+        return self._cap(text) + "."
+
+    @staticmethod
+    def _merge(phrases):
+        """'water is made of oxygen' + 'water is made of hydrogen' ->
+        ('water is made of', ['oxygen', 'hydrogen']); (None, phrases) if they
+        share no subject and verb."""
+        split = [p.split() for p in phrases]
+        n = 0
+        while all(len(w) > n + 1 and w[n] == split[0][n] for w in split):
+            n += 1
+        if n < 2:
+            return None, phrases
+        return " ".join(split[0][:n]), [" ".join(w[n:]) for w in split]
 
     def _qty(self, s, r, o):
         f = self.kb.get(s, r, o)
@@ -342,6 +512,7 @@ class Mind:
         return ", ".join(parts[:-1]) + " and " + parts[-1]
 
     def _q_attr(self, q):
+        q.s = self._c(q.s)
         vals = [a for a in self.kb.objects(q.s, "is")
                 if self.kb.ask(a.value, "isa", q.extra).truth.f >= 0.5
                 and self.kb.ask(a.value, "isa", q.extra).known]
@@ -354,23 +525,28 @@ class Mind:
         return self._cap(phrase) + "."
 
     def _q_how_many(self, q):
+        q.s, q.o = self._c(q.s), self._c(q.o)
         f = self.kb.get(q.s, "has", q.o)
         if f is None:
             for m, mem in self.kb.categories_of(q.s):
                 g = self.kb.get(m, "has", q.o)
-                if g is not None and g.qty is not None:
+                if g is not None and g.qty is not None and g.qty >= 0:
                     self._record(Answer(Truth.deduction(mem.truth, g.truth), mem.premises + [g],
                                         "inheritance"))
                     return (f"{self._cap(str(L.NUMBER_WORDS.get(g.qty, g.qty)))}. "
                             f"{self.kb.explain(self.last)}")
             return "I don't know."
-        if f.qty is None:
+        if f.qty is None or f.qty < 0:
             return "I don't know how many."
         self._record(Answer(f.truth, [f]))
         return f"{self._cap(str(L.NUMBER_WORDS.get(f.qty, f.qty)))}."
 
     def _q_subjects(self, q):
-        ans = self.kb.subjects(q.r, q.o)
+        ans = []
+        for k in self._senses_of(q.o):
+            ans = self.kb.subjects(q.r, k)
+            if ans:
+                break
         if ans:
             self._record(ans[0])
             names = [self.kb.name(a.value) for a in ans[:5]]
@@ -411,42 +587,55 @@ class Mind:
                         f"{self.kb.name(target)}; similarity {best[0][1]:.2f}).")
         return None
 
+    def _knows(self, x):
+        return bool(self.kb.out(x)) or x in self.kb.definitions or self.world.knows(x)
+
     def _q_describe(self, q):
-        s = q.s
-        facts = [f for f in self.kb.out(s) if f.source != "innate"]
+        word = q.s
+        senses = self._senses_of(word)
+        s = next((k for k in senses if self._knows(k)), senses[0])
+        kb = self.kb
+        proper = s in kb.display
+        subj = kb.ref(s) if proper else kb.name(s, True) if kb.generic(s) else kb.ref(s)
+        be = "are" if not proper and kb.many(s) else "is"
         lines = []
+        if s in kb.definitions:
+            head = kb.display.get(s, kb.bare(s))
+            lines.append(f"{self._cap(head)}: {kb.definitions[s]}")
         if self.world.knows(s):
             p, _ = self.world.where(s)
             if isinstance(p, str):
-                lines.append(f"{self.kb.ref(s)} is in {self.kb.ref(p)}")
+                lines.append(f"{kb.ref(s)} is in {kb.ref(p)}")
             carried = self.world.carrying(s)
             if carried:
-                lines.append(f"{self.kb.ref(s)} is carrying " +
-                             self._join([self.kb.ref(o) for o in carried]))
-        facts.sort(key=lambda f: -self.kb.activation(f))
-        for f in facts[:6]:
-            lines.append(self.kb.say(f))
-        cats = [m for m, a in self.kb.categories_of(s) if a.how != "direct"]
-        if cats:
-            lines.append(f"{self.kb.ref(s) if s in self.kb.display else self.kb.name(s, True)} "
-                         f"{'is' if s in self.kb.display else 'are'} also "
-                         + self._join([self.kb.article(c) if s in self.kb.display
-                                       else self.kb.name(c, True) for c in cats[:3]]))
-        subj = self.kb.name(s, True) if self.kb.generic(s) else self.kb.ref(s)
-        inh = [a for a in self.kb.objects(s, "can") if a.how != "direct"][:4]
+                lines.append(f"{kb.ref(s)} is carrying " + self._join([kb.ref(o) for o in carried]))
+        kinds = [m for m, a in kb.categories_of(s)
+                 if kb.bare(m) not in kb._TOO_GENERAL | {"organism"}][:4]
+        if kinds:
+            terms = [kb.article(c) if be == "is" else kb.name(c, True) for c in kinds]
+            lines.append(f"{subj} {be} {self._join(terms)}")
+        facts = [f for f in kb.out(s) if f.source != "innate" and f.r != "isa"]
+        facts.sort(key=lambda f: (f.source in kb.authority, -kb.activation(f)))
+        for f in facts[:5]:
+            lines.append(kb.say(f))
+        if s in kb.words:
+            lines.append("also called " + self._join(kb.words[s][:3]))
+        famous = proper and s in kb.definitions      # Einstein's abilities are not news
+        inh = [] if famous else [a for a in kb.objects(s, "can") if a.how != "direct"][:4]
         if inh:
             verbs = [("probably " if a.truth.c < 0.7 else "") + a.value for a in inh]
             lines.append(f"{subj} can {self._join(verbs)}")
-        cannot = [a for a in self.kb.objects(s, "can", positive=False) if a.how != "direct"][:3]
+        cannot = [] if famous else \
+            [a for a in kb.objects(s, "can", positive=False) if a.how != "direct"][:3]
         if cannot:
             lines.append(f"{subj} cannot {self._join([a.value for a in cannot])} "
-                         f"({self.kb.say_answer(cannot[0]) if cannot[0].premises else ''})")
+                         f"({kb.say_answer(cannot[0]) if cannot[0].premises else ''})")
         if not lines:
-            if self.semantic is not None and s in self.semantic:
-                sim = ", ".join(w for w, _ in self.semantic.similar(s, 5))
-                return f"I know the word '{s}' from reading; it goes with {sim}."
-            return f"I don't know anything about {s}."
-        return self._cap(". ".join(self._cap(x) for x in lines)) + "."
+            if self.semantic is not None and word in self.semantic:
+                sim = ", ".join(w for w, _ in self.semantic.similar(word, 5))
+                return f"I know the word '{word}' from reading; it goes with {sim}."
+            return f"I don't know anything about {word}."
+        return ". ".join(self._cap(x) for x in lines) + "."
 
     def _q_where(self, q):
         if self.world.knows(q.s) and (self._dynamic(q.s) or not self.kb.out(q.s, "in")):
@@ -456,12 +645,17 @@ class Mind:
                 return f"{self._cap(self.kb.ref(q.s))} is in {self.kb.ref(p)}."
             if isinstance(p, tuple) and p and p[0] != "not":
                 return f"Either in {self.kb.ref(p[0])} or in {self.kb.ref(p[1])}."
+        for k in self._senses_of(q.s):
+            if self.kb.out(k, "in") or self.kb.out(k, "part_of"):
+                q.s = k
+                break
         subj = self.kb.name(q.s, True) if self.kb.generic(q.s) else self.kb.ref(q.s)
         be = "are" if self.kb.generic(q.s) else "is"
-        ans = self.kb.objects(q.s, "in")
+        ans = self.kb.objects(q.s, "in") or self.kb.objects(q.s, "part_of")
         if ans:
+            ans.sort(key=lambda a: a.how != "direct")
             a = self._record(ans[0])
-            places = [self.kb.ref(x.value) for x in ans[:3]]
+            places = [self.kb.ref(x.value) for x in ans[:2]]
             return f"{self._cap(subj)} {be} in " + " and ".join(places) + "."
         for rel in ("on", "near", "above", "below"):
             ans = self.kb.objects(q.s, rel)
@@ -560,6 +754,9 @@ class Mind:
         return ""
 
     # ------------------------------------------------------------------ persistence
+    _LEXICAL = ("definitions", "senses", "aliases", "proper", "words", "surface", "primed",
+                "mass", "taxa")
+
     def save(self, directory):
         """Save the whole mind (cortex, semantic memory, facts, episodes)."""
         import os
@@ -569,8 +766,10 @@ class Mind:
             self.cortex.save(os.path.join(directory, "cortex.bin"))
         if self.semantic is not None:
             self.semantic.save(os.path.join(directory, "semantic.npz"))
-        state = {"kb": (self.kb.facts, self.kb.display, self.kb.categories, self.kb.clock),
-                 "world": self.world, "wm": self.wm}
+        kb = self.kb
+        state = {"kb": (kb.facts, kb.display, kb.categories, kb.clock),
+                 "lexical": {k: getattr(kb, k) for k in self._LEXICAL},
+                 "keep_plural": L.KEEP_PLURAL, "world": self.world, "wm": self.wm}
         with open(os.path.join(directory, "mind.pkl"), "wb") as f:
             pickle.dump(state, f)
 
@@ -598,6 +797,9 @@ class Mind:
             for k in facts:
                 m.kb.by_s[k[0]].add(k)
                 m.kb.by_o[k[2]].add(k)
+            for k, v in st.get("lexical", {}).items():
+                setattr(m.kb, k, v)
+            L.KEEP_PLURAL |= st.get("keep_plural", set())
             m.world, m.wm = st["world"], st["wm"]
         return m
 

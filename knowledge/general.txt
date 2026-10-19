@@ -1,0 +1,573 @@
+# General knowledge pack for Mnemo.
+#
+# One plain-English statement per line, in the same controlled English the mind
+# understands in conversation. Load it with:
+#   python3 -m mnemo feed --pack general
+# It complements WordNet: WordNet gives the dictionary (what kind of thing
+# everything is); this pack gives common-sense facts, exceptions, and up-to-date
+# capitals and currencies. Pack facts about capitals and currencies replace
+# WordNet's older ones (WordNet 3.0 dates from 2006).
+# Disputed capitals and city-states named like their country are left out.
+
+# ---------------------------------------------------------------- animals
+Animals need food.
+Animals need water.
+Animals need air.
+Mammals are warm-blooded.
+Mammals have hair.
+Mammals produce milk.
+Mammals cannot fly.
+People are mammals.
+People can speak.
+People can walk.
+People can swim.
+People cannot fly.
+People need sleep.
+People have two legs.
+People have two arms.
+People have two eyes.
+People have two ears.
+People have ten fingers.
+People have ten toes.
+People have a heart.
+People have two lungs.
+People have a brain.
+People have 206 bones.
+People have 32 teeth.
+Dogs bark.
+Dogs have four legs.
+Dogs have tails.
+Dogs can swim.
+Dogs can run.
+Carnivores eat meat.
+Herbivores eat plants.
+Dogs eat meat.
+Cats meow.
+Cats purr.
+Cats have four legs.
+Cats have tails.
+Cats have whiskers.
+Cats can climb.
+Cats chase mice.
+Cows eat grass.
+Horses eat grass.
+Sheep eat grass.
+Rabbits eat grass.
+Horses have four legs.
+Horses can run.
+Elephants have trunks.
+Elephants have four legs.
+Elephants are big.
+Giraffes have long necks.
+Giraffes are tall.
+Lions eat meat.
+Tigers eat meat.
+Wolves eat meat.
+Lions roar.
+Monkeys can climb.
+Bears hibernate.
+Kangaroos can jump.
+Kangaroos live in Australia.
+Koalas live in Australia.
+Pandas eat bamboo.
+Pandas live in China.
+Camels live in deserts.
+Polar bears live in the Arctic.
+Bats can fly.
+Bats are nocturnal.
+Whales live in the ocean.
+Whales can swim.
+Whales cannot walk.
+Dolphins live in the ocean.
+Dolphins can swim.
+Birds can fly.
+Birds have feathers.
+Birds have wings.
+Birds have two legs.
+Birds have beaks.
+Birds lay eggs.
+Penguins cannot fly.
+Penguins can swim.
+Ostriches cannot fly.
+Ostriches can run.
+Emus cannot fly.
+Kiwis cannot fly.
+Ducks can swim.
+Ducks can fly.
+Parrots can talk.
+Owls are nocturnal.
+Owls hunt mice.
+Eagles hunt fish.
+Fish can swim.
+Fish live in water.
+Fish have fins.
+Fish have gills.
+Fish lay eggs.
+Fish cannot walk.
+Sharks have teeth.
+Reptiles are cold-blooded.
+Reptiles have scales.
+Reptiles lay eggs.
+Snakes have no legs.
+Snakes can swim.
+Snakes hiss.
+Turtles have shells.
+Crocodiles live in rivers.
+Lizards have four legs.
+Amphibians are cold-blooded.
+Amphibians lay eggs.
+Frogs can jump.
+Frogs can swim.
+Frogs eat insects.
+Insects have six legs.
+Insects lay eggs.
+Bees can fly.
+Bees make honey.
+Bees pollinate flowers.
+Bees buzz.
+Ants live in colonies.
+Butterflies can fly.
+Butterflies have wings.
+Spiders have eight legs.
+Spiders make webs.
+Spiders eat insects.
+Worms have no legs.
+
+# sizes (bigger_than is transitive)
+Whales are bigger than elephants.
+Elephants are bigger than horses.
+Horses are bigger than dogs.
+Dogs are bigger than cats.
+Cats are bigger than mice.
+Mice are bigger than ants.
+
+# ---------------------------------------------------------------- plants and food
+Plants need water.
+Plants need sunlight.
+Plants need air.
+Plants produce oxygen.
+Plants have roots.
+Plants have leaves.
+Plants can grow.
+Plants cannot walk.
+Trees have trunks.
+Trees have branches.
+Trees are taller than people.
+Leaves are green.
+Grass is green.
+Roses are flowers.
+Roses have thorns.
+Tulips are flowers.
+Sunflowers are flowers.
+Daisies are flowers.
+Flowers have petals.
+Cacti live in deserts.
+Fruits have seeds.
+Apples are fruits.
+Bananas are fruits.
+Oranges are fruits.
+Grapes are fruits.
+Lemons are fruits.
+Strawberries are fruits.
+Tomatoes are fruits.
+Carrots are vegetables.
+Potatoes are vegetables.
+Onions are vegetables.
+Bananas are yellow.
+Lemons are yellow.
+Lemons are sour.
+Oranges are orange.
+Strawberries are red.
+Sugar is sweet.
+Honey is sweet.
+Bread is made of flour.
+Flour is made of wheat.
+Cheese is made of milk.
+Butter is made of milk.
+Yogurt is made of milk.
+Wine is made of grapes.
+Chocolate is made of cocoa.
+Paper is made of wood.
+Glass is made of sand.
+
+# ---------------------------------------------------------------- the body
+The heart pumps blood.
+The heart is in the chest.
+The brain is in the head.
+The lungs are in the chest.
+The stomach digests food.
+Blood is red.
+Bones are hard.
+The skeleton is made of bones.
+
+# ---------------------------------------------------------------- matter
+Water is a liquid.
+Ice is a solid.
+Steam is a gas.
+Ice is made of water.
+Snow is made of water.
+Steam is made of water.
+Ice is cold.
+Fire is hot.
+Snow is white.
+Snow is cold.
+Milk is white.
+Coal is black.
+Air is made of nitrogen.
+Air is made of oxygen.
+Salt is made of sodium.
+Salt is made of chlorine.
+Iron is a metal.
+Gold is a metal.
+Silver is a metal.
+Copper is a metal.
+Aluminium is a metal.
+Lead is a metal.
+Metals conduct electricity.
+Copper conducts electricity.
+Magnets attract iron.
+Iron is heavier than wood.
+Gold is heavier than iron.
+Diamonds are hard.
+Wood floats.
+
+# ---------------------------------------------------------------- earth and sky
+The sun is a star.
+The sun is hot.
+The sun is bigger than the earth.
+The earth is a planet.
+The earth is round.
+The earth orbits the sun.
+The moon orbits the earth.
+The earth is bigger than the moon.
+The earth has one moon.
+Mercury is a planet.
+Venus is a planet.
+Mars is a planet.
+Jupiter is a planet.
+Saturn is a planet.
+Uranus is a planet.
+Neptune is a planet.
+Pluto is not a planet.
+Pluto is a dwarf planet.
+Dwarf planets are celestial bodies.
+Planets orbit the sun.
+Mars is red.
+Mars has two moons.
+Saturn has rings.
+Jupiter is bigger than the earth.
+Jupiter is bigger than Saturn.
+The sky is blue.
+The earth is in the solar system.
+The solar system is in the Milky Way.
+The Milky Way is a galaxy.
+
+# ---------------------------------------------------------------- time
+Weeks have seven days.
+Years have twelve months.
+Days have 24 hours.
+Hours have 60 minutes.
+Minutes have 60 seconds.
+Monday is a day.
+Tuesday is a day.
+Wednesday is a day.
+Thursday is a day.
+Friday is a day.
+Saturday is a day.
+Sunday is a day.
+January is a month.
+February is a month.
+March is a month.
+April is a month.
+May is a month.
+June is a month.
+July is a month.
+August is a month.
+September is a month.
+October is a month.
+November is a month.
+December is a month.
+
+# ---------------------------------------------------------------- geography
+Africa is a continent.
+Antarctica is a continent.
+Asia is a continent.
+Australia is a continent.
+Europe is a continent.
+North America is a continent.
+South America is a continent.
+The Pacific Ocean is an ocean.
+The Atlantic Ocean is an ocean.
+The Indian Ocean is an ocean.
+The Arctic Ocean is an ocean.
+The Nile is a river.
+The Nile is in Africa.
+The Amazon is a river.
+The Amazon is in South America.
+The Sahara is a desert.
+The Sahara is in Africa.
+Mount Everest is a mountain.
+Mount Everest is in Asia.
+
+# countries, capitals and continents
+Algeria is a country. Algeria is in Africa. Algiers is the capital of Algeria.
+Angola is a country. Angola is in Africa. Luanda is the capital of Angola.
+Benin is a country. Benin is in Africa. Porto-Novo is the capital of Benin.
+Botswana is a country. Botswana is in Africa. Gaborone is the capital of Botswana.
+Burkina Faso is a country. Burkina Faso is in Africa. Ouagadougou is the capital of Burkina Faso.
+Burundi is a country. Burundi is in Africa. Gitega is the capital of Burundi.
+Cameroon is a country. Cameroon is in Africa. Yaounde is the capital of Cameroon.
+Cape Verde is a country. Cape Verde is in Africa. Praia is the capital of Cape Verde.
+Chad is a country. Chad is in Africa. N'Djamena is the capital of Chad.
+Egypt is a country. Egypt is in Africa. Cairo is the capital of Egypt.
+Eritrea is a country. Eritrea is in Africa. Asmara is the capital of Eritrea.
+Ethiopia is a country. Ethiopia is in Africa. Addis Ababa is the capital of Ethiopia.
+Gabon is a country. Gabon is in Africa. Libreville is the capital of Gabon.
+Ghana is a country. Ghana is in Africa. Accra is the capital of Ghana.
+Guinea is a country. Guinea is in Africa. Conakry is the capital of Guinea.
+Kenya is a country. Kenya is in Africa. Nairobi is the capital of Kenya.
+Lesotho is a country. Lesotho is in Africa. Maseru is the capital of Lesotho.
+Liberia is a country. Liberia is in Africa. Monrovia is the capital of Liberia.
+Libya is a country. Libya is in Africa. Tripoli is the capital of Libya.
+Madagascar is a country. Madagascar is in Africa. Antananarivo is the capital of Madagascar.
+Malawi is a country. Malawi is in Africa. Lilongwe is the capital of Malawi.
+Mali is a country. Mali is in Africa. Bamako is the capital of Mali.
+Mauritania is a country. Mauritania is in Africa. Nouakchott is the capital of Mauritania.
+Morocco is a country. Morocco is in Africa. Rabat is the capital of Morocco.
+Mozambique is a country. Mozambique is in Africa. Maputo is the capital of Mozambique.
+Namibia is a country. Namibia is in Africa. Windhoek is the capital of Namibia.
+Niger is a country. Niger is in Africa. Niamey is the capital of Niger.
+Nigeria is a country. Nigeria is in Africa. Abuja is the capital of Nigeria.
+Rwanda is a country. Rwanda is in Africa. Kigali is the capital of Rwanda.
+Senegal is a country. Senegal is in Africa. Dakar is the capital of Senegal.
+Sierra Leone is a country. Sierra Leone is in Africa. Freetown is the capital of Sierra Leone.
+Somalia is a country. Somalia is in Africa. Mogadishu is the capital of Somalia.
+South Africa is a country. South Africa is in Africa. Pretoria is the capital of South Africa.
+South Sudan is a country. South Sudan is in Africa. Juba is the capital of South Sudan.
+Sudan is a country. Sudan is in Africa. Khartoum is the capital of Sudan.
+Tanzania is a country. Tanzania is in Africa. Dodoma is the capital of Tanzania.
+Togo is a country. Togo is in Africa. Lome is the capital of Togo.
+Tunisia is a country. Tunisia is in Africa. Tunis is the capital of Tunisia.
+Uganda is a country. Uganda is in Africa. Kampala is the capital of Uganda.
+Zambia is a country. Zambia is in Africa. Lusaka is the capital of Zambia.
+Zimbabwe is a country. Zimbabwe is in Africa. Harare is the capital of Zimbabwe.
+Afghanistan is a country. Afghanistan is in Asia. Kabul is the capital of Afghanistan.
+Armenia is a country. Armenia is in Asia. Yerevan is the capital of Armenia.
+Azerbaijan is a country. Azerbaijan is in Asia. Baku is the capital of Azerbaijan.
+Bahrain is a country. Bahrain is in Asia. Manama is the capital of Bahrain.
+Bangladesh is a country. Bangladesh is in Asia. Dhaka is the capital of Bangladesh.
+Bhutan is a country. Bhutan is in Asia. Thimphu is the capital of Bhutan.
+Cambodia is a country. Cambodia is in Asia. Phnom Penh is the capital of Cambodia.
+China is a country. China is in Asia. Beijing is the capital of China.
+India is a country. India is in Asia. New Delhi is the capital of India.
+Indonesia is a country. Indonesia is in Asia. Jakarta is the capital of Indonesia.
+Iran is a country. Iran is in Asia. Tehran is the capital of Iran.
+Iraq is a country. Iraq is in Asia. Baghdad is the capital of Iraq.
+Japan is a country. Japan is in Asia. Tokyo is the capital of Japan.
+Jordan is a country. Jordan is in Asia. Amman is the capital of Jordan.
+Kazakhstan is a country. Kazakhstan is in Asia. Astana is the capital of Kazakhstan.
+Kuwait is a country. Kuwait is in Asia. Kuwait City is the capital of Kuwait.
+Kyrgyzstan is a country. Kyrgyzstan is in Asia. Bishkek is the capital of Kyrgyzstan.
+Laos is a country. Laos is in Asia. Vientiane is the capital of Laos.
+Lebanon is a country. Lebanon is in Asia. Beirut is the capital of Lebanon.
+Malaysia is a country. Malaysia is in Asia. Kuala Lumpur is the capital of Malaysia.
+Mongolia is a country. Mongolia is in Asia. Ulaanbaatar is the capital of Mongolia.
+Myanmar is a country. Myanmar is in Asia. Naypyidaw is the capital of Myanmar.
+Nepal is a country. Nepal is in Asia. Kathmandu is the capital of Nepal.
+North Korea is a country. North Korea is in Asia. Pyongyang is the capital of North Korea.
+Oman is a country. Oman is in Asia. Muscat is the capital of Oman.
+Pakistan is a country. Pakistan is in Asia. Islamabad is the capital of Pakistan.
+The Philippines is a country. The Philippines is in Asia. Manila is the capital of the Philippines.
+Qatar is a country. Qatar is in Asia. Doha is the capital of Qatar.
+Saudi Arabia is a country. Saudi Arabia is in Asia. Riyadh is the capital of Saudi Arabia.
+South Korea is a country. South Korea is in Asia. Seoul is the capital of South Korea.
+Syria is a country. Syria is in Asia. Damascus is the capital of Syria.
+Tajikistan is a country. Tajikistan is in Asia. Dushanbe is the capital of Tajikistan.
+Thailand is a country. Thailand is in Asia. Bangkok is the capital of Thailand.
+Turkey is a country. Turkey is in Asia. Ankara is the capital of Turkey.
+Turkmenistan is a country. Turkmenistan is in Asia. Ashgabat is the capital of Turkmenistan.
+The United Arab Emirates is a country. The United Arab Emirates is in Asia. Abu Dhabi is the capital of the United Arab Emirates.
+Uzbekistan is a country. Uzbekistan is in Asia. Tashkent is the capital of Uzbekistan.
+Vietnam is a country. Vietnam is in Asia. Hanoi is the capital of Vietnam.
+Yemen is a country. Yemen is in Asia. Sanaa is the capital of Yemen.
+Albania is a country. Albania is in Europe. Tirana is the capital of Albania.
+Austria is a country. Austria is in Europe. Vienna is the capital of Austria.
+Belarus is a country. Belarus is in Europe. Minsk is the capital of Belarus.
+Belgium is a country. Belgium is in Europe. Brussels is the capital of Belgium.
+Bosnia and Herzegovina is a country. Bosnia and Herzegovina is in Europe. Sarajevo is the capital of Bosnia and Herzegovina.
+Bulgaria is a country. Bulgaria is in Europe. Sofia is the capital of Bulgaria.
+Croatia is a country. Croatia is in Europe. Zagreb is the capital of Croatia.
+The Czech Republic is a country. The Czech Republic is in Europe. Prague is the capital of the Czech Republic.
+Denmark is a country. Denmark is in Europe. Copenhagen is the capital of Denmark.
+Estonia is a country. Estonia is in Europe. Tallinn is the capital of Estonia.
+Finland is a country. Finland is in Europe. Helsinki is the capital of Finland.
+France is a country. France is in Europe. Paris is the capital of France.
+Germany is a country. Germany is in Europe. Berlin is the capital of Germany.
+Greece is a country. Greece is in Europe. Athens is the capital of Greece.
+Hungary is a country. Hungary is in Europe. Budapest is the capital of Hungary.
+Iceland is a country. Iceland is in Europe. Reykjavik is the capital of Iceland.
+Ireland is a country. Ireland is in Europe. Dublin is the capital of Ireland.
+Italy is a country. Italy is in Europe. Rome is the capital of Italy.
+Latvia is a country. Latvia is in Europe. Riga is the capital of Latvia.
+Liechtenstein is a country. Liechtenstein is in Europe. Vaduz is the capital of Liechtenstein.
+Lithuania is a country. Lithuania is in Europe. Vilnius is the capital of Lithuania.
+Malta is a country. Malta is in Europe. Valletta is the capital of Malta.
+Moldova is a country. Moldova is in Europe. Chisinau is the capital of Moldova.
+Montenegro is a country. Montenegro is in Europe. Podgorica is the capital of Montenegro.
+The Netherlands is a country. The Netherlands is in Europe. Amsterdam is the capital of the Netherlands.
+North Macedonia is a country. North Macedonia is in Europe. Skopje is the capital of North Macedonia.
+Norway is a country. Norway is in Europe. Oslo is the capital of Norway.
+Poland is a country. Poland is in Europe. Warsaw is the capital of Poland.
+Portugal is a country. Portugal is in Europe. Lisbon is the capital of Portugal.
+Romania is a country. Romania is in Europe. Bucharest is the capital of Romania.
+Russia is a country. Russia is in Europe. Russia is in Asia. Moscow is the capital of Russia.
+Serbia is a country. Serbia is in Europe. Belgrade is the capital of Serbia.
+Slovakia is a country. Slovakia is in Europe. Bratislava is the capital of Slovakia.
+Slovenia is a country. Slovenia is in Europe. Ljubljana is the capital of Slovenia.
+Spain is a country. Spain is in Europe. Madrid is the capital of Spain.
+Sweden is a country. Sweden is in Europe. Stockholm is the capital of Sweden.
+Switzerland is a country. Switzerland is in Europe. Bern is the capital of Switzerland.
+Ukraine is a country. Ukraine is in Europe. Kyiv is the capital of Ukraine.
+The United Kingdom is a country. The United Kingdom is in Europe. London is the capital of the United Kingdom.
+The Bahamas is a country. The Bahamas is in North America. Nassau is the capital of the Bahamas.
+Barbados is a country. Barbados is in North America. Bridgetown is the capital of Barbados.
+Belize is a country. Belize is in North America. Belmopan is the capital of Belize.
+Canada is a country. Canada is in North America. Ottawa is the capital of Canada.
+Costa Rica is a country. Costa Rica is in North America. San Jose is the capital of Costa Rica.
+Cuba is a country. Cuba is in North America. Havana is the capital of Cuba.
+The Dominican Republic is a country. The Dominican Republic is in North America. Santo Domingo is the capital of the Dominican Republic.
+El Salvador is a country. El Salvador is in North America. San Salvador is the capital of El Salvador.
+Guatemala is a country. Guatemala is in North America. Guatemala City is the capital of Guatemala.
+Haiti is a country. Haiti is in North America. Port-au-Prince is the capital of Haiti.
+Honduras is a country. Honduras is in North America. Tegucigalpa is the capital of Honduras.
+Jamaica is a country. Jamaica is in North America. Kingston is the capital of Jamaica.
+Mexico is a country. Mexico is in North America. Mexico City is the capital of Mexico.
+Nicaragua is a country. Nicaragua is in North America. Managua is the capital of Nicaragua.
+Panama is a country. Panama is in North America. Panama City is the capital of Panama.
+The United States is a country. The United States is in North America. Washington is the capital of the United States.
+Argentina is a country. Argentina is in South America. Buenos Aires is the capital of Argentina.
+Bolivia is a country. Bolivia is in South America. Sucre is the capital of Bolivia.
+Brazil is a country. Brazil is in South America. Brasilia is the capital of Brazil.
+Chile is a country. Chile is in South America. Santiago is the capital of Chile.
+Colombia is a country. Colombia is in South America. Bogota is the capital of Colombia.
+Ecuador is a country. Ecuador is in South America. Quito is the capital of Ecuador.
+Guyana is a country. Guyana is in South America. Georgetown is the capital of Guyana.
+Paraguay is a country. Paraguay is in South America. Asuncion is the capital of Paraguay.
+Peru is a country. Peru is in South America. Lima is the capital of Peru.
+Suriname is a country. Suriname is in South America. Paramaribo is the capital of Suriname.
+Uruguay is a country. Uruguay is in South America. Montevideo is the capital of Uruguay.
+Venezuela is a country. Venezuela is in South America. Caracas is the capital of Venezuela.
+Australia is a country. Canberra is the capital of Australia.
+Fiji is a country. Suva is the capital of Fiji.
+New Zealand is a country. Wellington is the capital of New Zealand.
+Papua New Guinea is a country. Port Moresby is the capital of Papua New Guinea.
+Samoa is a country. Apia is the capital of Samoa.
+Tonga is a country. Nuku'alofa is the capital of Tonga.
+Vanuatu is a country. Port Vila is the capital of Vanuatu.
+
+# currencies
+The currency of the United States is the dollar.
+The currency of Canada is the dollar.
+The currency of Australia is the dollar.
+The currency of New Zealand is the dollar.
+The currency of Japan is the yen.
+The currency of China is the yuan.
+The currency of the United Kingdom is the pound sterling.
+The currency of France is the euro.
+The currency of Germany is the euro.
+The currency of Italy is the euro.
+The currency of Spain is the euro.
+The currency of Portugal is the euro.
+The currency of the Netherlands is the euro.
+The currency of Belgium is the euro.
+The currency of Austria is the euro.
+The currency of Ireland is the euro.
+The currency of Finland is the euro.
+The currency of Greece is the euro.
+The currency of Croatia is the euro.
+The currency of India is the rupee.
+The currency of Pakistan is the rupee.
+The currency of Russia is the ruble.
+The currency of Brazil is the real.
+The currency of Mexico is the peso.
+The currency of Argentina is the peso.
+The currency of Chile is the peso.
+The currency of Colombia is the peso.
+The currency of the Philippines is the peso.
+The currency of Switzerland is the franc.
+The currency of South Korea is the won.
+The currency of South Africa is the rand.
+The currency of Turkey is the lira.
+The currency of Sweden is the krona.
+The currency of Norway is the krone.
+The currency of Denmark is the krone.
+The currency of Poland is the zloty.
+The currency of Indonesia is the rupiah.
+The currency of Thailand is the baht.
+The currency of Vietnam is the dong.
+The currency of Malaysia is the ringgit.
+The currency of Saudi Arabia is the riyal.
+The currency of Nigeria is the naira.
+The currency of Kenya is the shilling.
+The currency of Bangladesh is the taka.
+The currency of Hungary is the forint.
+The currency of Ukraine is the hryvnia.
+
+# languages
+The language of the United Kingdom is English.
+The language of the United States is English.
+The language of Australia is English.
+The language of New Zealand is English.
+The language of Ireland is English.
+The language of Ireland is Irish.
+The language of Canada is English.
+The language of Canada is French.
+The language of France is French.
+The language of Belgium is French.
+The language of Belgium is Dutch.
+The language of the Netherlands is Dutch.
+The language of Germany is German.
+The language of Austria is German.
+The language of Switzerland is German.
+The language of Switzerland is French.
+The language of Switzerland is Italian.
+The language of Italy is Italian.
+The language of Spain is Spanish.
+The language of Mexico is Spanish.
+The language of Argentina is Spanish.
+The language of Colombia is Spanish.
+The language of Peru is Spanish.
+The language of Chile is Spanish.
+The language of Cuba is Spanish.
+The language of Venezuela is Spanish.
+The language of Portugal is Portuguese.
+The language of Brazil is Portuguese.
+The language of Russia is Russian.
+The language of China is Chinese.
+The language of Japan is Japanese.
+The language of South Korea is Korean.
+The language of North Korea is Korean.
+The language of India is Hindi.
+The language of India is English.
+The language of Pakistan is Urdu.
+The language of Bangladesh is Bengali.
+The language of Egypt is Arabic.
+The language of Saudi Arabia is Arabic.
+The language of Iraq is Arabic.
+The language of Morocco is Arabic.
+The language of Turkey is Turkish.
+The language of Iran is Persian.
+The language of Greece is Greek.
+The language of Sweden is Swedish.
+The language of Norway is Norwegian.
+The language of Denmark is Danish.
+The language of Finland is Finnish.
+The language of Poland is Polish.
+The language of Hungary is Hungarian.
+The language of Romania is Romanian.
+The language of Ukraine is Ukrainian.
+The language of Thailand is Thai.
+The language of Vietnam is Vietnamese.
+The language of Indonesia is Indonesian.
+The language of Kenya is Swahili.
+The language of Tanzania is Swahili.

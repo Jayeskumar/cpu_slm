@@ -26,4 +26,12 @@ if [ ! -d "$D/gutenberg/gutenberg" ]; then
   fetch https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/gutenberg.zip "$D/gutenberg/gutenberg.zip"
   (cd "$D/gutenberg" && unzip -q -o gutenberg.zip)
 fi
+# WordNet 3.0 (Princeton; permissive WordNet license) and first-name lists, as
+# packaged by NLTK -- general knowledge for `python3 -m mnemo feed --wordnet`
+for pkg in wordnet names; do
+  if [ ! -d "$D/nltk/$pkg" ]; then
+    fetch "https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/$pkg.zip" "$D/nltk/$pkg.zip"
+    (cd "$D/nltk" && unzip -q -o "$pkg.zip")
+  fi
+done
 echo "done"; du -sh "$D"/*
