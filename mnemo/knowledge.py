@@ -617,7 +617,8 @@ class Knowledge:
         if generic is None:
             generic = getattr(f, "generic", None)
         gen = self.generic(f.s) if generic is None else generic
-        subj = self.name(f.s, True) if gen else self.ref(f.s)
+        subj = self.name(f.s, True) if gen else \
+            self.word(f.s) if self._is_mass(f.s) and f.s not in self.display else self.ref(f.s)
         if f.s == "user":
             subj, gen = "you", True
         elif gen and self._is_mass(f.s):

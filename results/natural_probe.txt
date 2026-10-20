@@ -1,0 +1,6 @@
+# tests/natural_probe.py models/kbrain -v
+# NATURAL: baseline before the rephrasing work was 24/73 (results/natural_probe_baseline.txt)
+# NATURAL_2: written after that work, first and only run before any further fix:
+natural    73/73 correct (100%), median 0.2 ms
+  MISS What money do they use in the United Kingdom? -> "I don't know." (want pound)
+natural 2  55/56 correct (98%), median 0.2 ms

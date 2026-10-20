@@ -24,6 +24,12 @@ what weight-based learning adds.
   comes with an explanation:
   > *Is a whale a fish?* No. Whales are mammals; mammals and fish are
   > different kinds of vertebrate.
+* It **understands how people actually ask.** That includes contractions,
+  fragments ("capital of Spain?"), wrapped questions ("could you tell me
+  whether…"), lists ("Which animals can fly?"), choices ("Is a tomato a fruit
+  or a vegetable?"), "why" questions and exact sums. Typed naturally, a fresh
+  set of questions scores 98% on its first run, up from 33% before this
+  work. You can chat with it in the browser.
 * On Tiny Shakespeare it scores 2.04 bits per character with learning frozen
   (1.85 online) after 7 s of CPU training. nanoGPT's 10.65M-parameter GPU
   transformer scores 2.12.
@@ -52,7 +58,7 @@ The full survey, design rationale, measurements and limitations are in
 make                       # builds build/mnemo (CLI) and build/libmnemo.so (C99, no deps)
 python3 -m mnemo demo      # reasoning tour; needs only numpy
 python3 -m mnemo chat      # talk to it: teach facts, tell stories, ask questions
-python3 tests/run_tests.py # 34 unit tests (also runnable with pytest)
+python3 tests/run_tests.py # 41 unit tests (also runnable with pytest)
 python3 tests/story_tasks.py 200   # bAbI-style story suite
 ```
 
@@ -62,7 +68,9 @@ To give it general knowledge (WordNet and the bundled pack):
 scripts/get_data.sh                               # corpora, plus WordNet 3.0 and name lists
 python3 -m mnemo feed --brain models/kbrain       # ~6 s, 108k facts, 23 MB
 python3 -m mnemo chat --brain models/kbrain
+python3 -m mnemo serve                            # the same in the browser: http://127.0.0.1:8765/
 python3 tests/knowledge_probe.py models/kbrain    # 159 general-knowledge questions
+python3 tests/natural_probe.py models/kbrain      # 129 questions typed the way people type
 ```
 
 To give it language and word meanings, let it read:
@@ -162,6 +170,52 @@ mnemo> No. Kiri is a kiwi, and kiwis cannot fly.
 One caveat: these questions are in the phrasing the reader understands, about
 what WordNet and the pack cover. The story tasks still score 100% with all
 108k facts loaded underneath.
+
+## Asking it naturally, in the browser
+
+`python3 -m mnemo serve` opens a local chat page. It uses the standard library
+only, loads nothing from the internet, and binds to localhost. Each answer has
+a **why?** link to its reasoning.
+
+![Mnemo's chat page](docs/chat.png)
+
+People don't ask in the reader's phrasing, so `mnemo/rephrase.py` maps how they
+do ask onto it. It strips polite wrappers and embedded questions ("please tell
+me what a giraffe is"). It handles checks ("is it true that penguins can't
+fly?", with the verdict turned round), fragments, shouting, "how many N are in
+a M", and money and language paraphrases. Sums are exact. The mind also
+answers the question types people expect:
+
+```text
+you> Which animals can fly?
+mnemo> Birds, bees, ducks, bats and butterflies.
+you> What kind of animal is a whale?
+mnemo> A mammal (more precisely, a cetacean).
+you> Is a tomato a fruit or a vegetable?
+mnemo> Both: tomatoes are fruits and vegetables.
+you> Why is a whale not a fish?
+mnemo> Because whales are cetaceans, aquatic mammals, placentals and so mammals; mammals and fish are different kinds of vertebrate.
+you> Why can a penguin fly?
+mnemo> Actually, penguins cannot fly.
+you> Do birds have four legs?
+mnemo> No. Birds have two legs.
+you> Name some countries in Africa.
+mnemo> Morocco, Egypt, Ghana, Tunisia, South Africa, Sudan, Madagascar and Mali.
+you> What is the difference between a whale and a fish?
+mnemo> Whales are mammals, while fish are aquatic vertebrates; both are vertebrates. Whale: any of the larger cetacean mammals having a streamlined body and breathing through a blowhole on the head. Fish: any of various mostly cold-blooded aquatic vertebrates usually having scales and breathing through gills.
+you> What is 3 plus 4 times 2?
+mnemo> 3 + 4 × 2 = 11.
+```
+
+Lists are ranked by familiarity: how often each sense occurs in WordNet's
+SemCor counts. That puts "dogs" before "placentals" and oaks before rare kinds
+of tree.
+
+| Natural-phrasing probe (`tests/natural_probe.py`) | Correct |
+|---|---|
+| 73 questions, before this work (baseline) | 24/73 (33%) |
+| the same 73 after it (now development data) | 73/73 |
+| 56 fresh questions, written afterwards, run once | **55/56 (98%)** |
 
 ## Weights: a small LSTM next to the counts
 
@@ -333,9 +387,11 @@ It is locally fluent and globally incoherent; see Limitations below.
 ```text
 src/            C engine: cortex.c (context mixing), lexicon.c (word model), main.c (CLI)
 mnemo/          Python mind: cortex wrapper, language, knowledge, world, semantic, hdc, CLI,
-                feed (WordNet / packs / fact files), neural (numpy LSTM)
+                feed (WordNet / packs / fact files), neural (numpy LSTM), rephrase (how people
+                ask, sums), serve (local chat page)
 knowledge/      general.txt, the curated knowledge pack
-tests/          unit tests, bAbI-style story suite, general-knowledge probe
+tests/          unit tests, bAbI-style story suite, general-knowledge and natural-phrasing probes
+docs/           screenshots
 tools/          kn_reference.py (exact KN5), train_lstm.py, hybrid_eval.py, teacher_pack.py
 scripts/        get_data.sh, benchmark.sh
 RESEARCH.md     survey + design + results + limitations + roadmap
@@ -347,7 +403,9 @@ These are stated plainly here, and in more detail in RESEARCH.md:
 * **Generated text** is locally fluent but globally incoherent, like any
   n-gram-family model.
 * **Hand-written rules.** The parser understands a controlled subset of
-  English, and its inference rules are designed by hand, not learned.
+  English, widened by rephrasing rules for common ways of asking. Its
+  inference rules are designed by hand, not learned. Phrasings outside the
+  rules still get "I don't understand that yet".
 * **Knowledge.** It knows only what it has been told, has read, or was fed
   (WordNet and the pack): no events, dates or numbers beyond those.
 * **Story-task scores.** These come from a self-generated suite in bAbI style.

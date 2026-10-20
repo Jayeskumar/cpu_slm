@@ -1,6 +1,7 @@
-"""Command line: python3 -m mnemo {chat,train,feed,demo,generate}
+"""Command line: python3 -m mnemo {chat,serve,train,feed,demo,generate}
 
   chat      talk to a mind (teach it facts, ask questions, ask it to imagine)
+  serve     the same in the browser: a local chat page
   train     build a brain directory from text files (cortex + semantic memory)
   feed      add general knowledge: WordNet, knowledge packs, your own fact files
   demo      a scripted tour of what the mind can do
@@ -118,6 +119,15 @@ def cmd_chat(a):
         print(f"saved to {a.brain}")
 
 
+def cmd_serve(a):
+    from .serve import serve
+    brain = a.brain if a.brain else next((b for b in ("models/kbrain", "models/brain")
+                                          if os.path.isdir(b)), None)
+    m = load_mind(brain)
+    print(f"brain: {brain or '(empty mind)'}")
+    serve(m, a.host, a.port, brain)
+
+
 DEMO = [
     ("Default reasoning with exceptions",
      ["Tweety is a bird.", "Birds can fly.", "Penguins are birds.", "Penguins can't fly.",
@@ -205,6 +215,11 @@ def main(argv=None):
     f.add_argument("--source", default="file", help="source label for the files' facts")
     f.add_argument("--conf", type=float, default=0.9, help="confidence of the files' facts")
     f.set_defaults(fn=cmd_feed)
+    v = sub.add_parser("serve", help="chat in the browser (local, no dependencies)")
+    v.add_argument("--brain", default=None, help="brain directory (default: models/kbrain)")
+    v.add_argument("--host", default="127.0.0.1")
+    v.add_argument("--port", type=int, default=8765)
+    v.set_defaults(fn=cmd_serve)
     d = sub.add_parser("demo", help="scripted tour")
     d.add_argument("--brain", default="models/brain")
     d.set_defaults(fn=cmd_demo)

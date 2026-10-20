@@ -145,6 +145,8 @@ def rephrase(text):
     if m:
         return _question("what is the language of " + m.group(1)), False
     m = re.match(r"^(?:what|which) (?:currency|money) (?:does|do) (.+?) use$", body, _I) or \
+        re.match(r"^(?:what|which) (?:currency|money) (?:do|does) (?:they|people|you|one) "
+                 r"(?:use|pay with|spend) in (.+)$", body, _I) or \
         re.match(r"^(?:what|which) (?:is the )?(?:currency|money) (?:is )?(?:used )?in (.+)$",
                  body, _I) or \
         re.match(r"^what is the currency in (.+)$", body, _I)

@@ -12,8 +12,9 @@ This document has three parts:
 * **Part II: the system.** The design that came out of the survey, how it
   maps onto brain systems, what it measurably does, and what it cannot do.
 * **Part III: knowledge and weights.** Feeding it general knowledge (WordNet,
-  a curated pack, your own files), adding a small CPU-trained LSTM, and an
-  honest comparison with Gemma 1.
+  a curated pack, your own files), adding a small CPU-trained LSTM, an
+  honest comparison with Gemma 1, and understanding how people actually
+  ask.
 
 Figures from the literature carry a source link. Three research agents
 gathered them. Their web fetches were mostly blocked, so many figures come from
@@ -1001,7 +1002,99 @@ Gemma's benchmark numbers are from Table 6 of the Gemma report.
   next to the counting memories buy most of what weights buy in language
   modelling, at a tiny fraction of an LLM's size.
 
-### 14. References
+### 14. Understanding how people ask
+
+The reader (§7.7) parses a controlled subset of English. That suits teaching
+and testing, but it is not how people type. A probe of 73 natural phrasings
+(`tests/natural_probe.py`), written before this work, scored **24/73 (33%)**.
+Almost every miss was "I don't understand that yet":
+* contractions written without an apostrophe ("whats");
+* fragments ("capital of Spain?");
+* wrappers ("could you tell me whether …");
+* lists ("Which animals can fly?");
+* choices, comparisons and sums.
+
+#### 14.1 Rephrasing
+
+`mnemo/rephrase.py` maps common ways of asking onto the reader's forms, one
+rule at a time, and keeps the speaker's capitals for the names:
+* **Wrappers.** It strips politeness and embedded questions: "please tell me
+  what a giraffe is" → "what is a giraffe"; "do you know what cows eat" →
+  "what do cows eat".
+* **Checks.** "Is it true that bats are birds" → "are bats birds". A
+  negated statement is asked the other way round and its verdict flipped:
+  "is it true that penguins can't fly" → "can penguins fly", then flip.
+* **Teaching wrappers.** "Remember that …" and "note that …" become plain
+  statements.
+* **Fragments and paraphrases.** It handles fragments, shouting, "how many N
+  are in a M", and language and currency paraphrases.
+* **Sums.** A small recursive-descent parser does exact arithmetic with
+  number words, precedence, powers and roots. It never calls `eval`.
+
+#### 14.2 The question types people expect
+
+New handlers in `mnemo/mind.py` answer the following:
+* **Why plus a question.** It gives the reasons, or corrects the question's
+  assumption: "Why can a penguin fly?" → "Actually, penguins cannot fly."
+* **"What kind of animal is a whale?"** The answer is at the everyday level,
+  the category that people (the user or the pack) talk about. That follows
+  Rosch's basic level: "A mammal (more precisely, a cetacean)."
+* **Examples and lists.** "Name some birds", "Which animals can fly?" and
+  "Which countries are in South America?"
+* **Comparisons.** "Which is bigger, an elephant or a mouse?"
+* **Choices.** "Is a tomato a fruit or a vegetable?" → "Both".
+* **Differences.** For "the difference between X and Y", it gives where X and
+  Y part in the taxonomy, plus both definitions.
+* **Places of a kind.** "Which continent is Kenya in?"
+* **Inverse relations.** "Paris is the capital of which country?"
+* **Yes/no with a number.** "Do birds have four legs?" → "No. Birds have two
+  legs."
+
+#### 14.3 Familiarity
+
+A list of examples is only useful if it names familiar things. Candidates are
+ranked in this order:
+1. What the user or the pack said.
+2. How often the sense was tagged in SemCor, from WordNet's `index.sense`.
+3. Whether the concept is its word's dominant sense.
+4. The word's polysemy. Frequent words have many senses, by Zipf's law of
+   meaning.
+
+Deep proper names are left out: Adam Smith is a mammal only through
+"person". Examples of an animal kind must be animals. "Give me an example of a
+mammal" now answers "People, seals, bats, dolphins, mice and monkeys", not
+"tuskers and placentals".
+
+The same counts choose the everyday word for about 2,000 concepts whose
+WordNet headword is almost never used: "human being" for *homo*, "metal" for
+*metallic element*. The speaker's own word always wins. A story that says
+"hallway" hears "hallway", not WordNet's more frequent "hall".
+
+#### 14.4 Results
+
+| Natural-phrasing probe | Correct |
+|---|---|
+| 73 questions, baseline before this work | 24/73 (33%) |
+| the same 73 after it (development data) | 73/73 |
+| 56 fresh questions, written after the work, run once | **55/56 (98%)** |
+
+The one fresh miss was "What money do they use in the United Kingdom?", a
+paraphrase the rules did not cover. It was fixed afterwards. Answers still take
+about 0.2 ms. All earlier suites are unchanged:
+* 159/159 on the knowledge probe;
+* 100% on the story tasks, with and without the fed brain;
+* 41 unit tests.
+
+#### 14.5 Limits
+
+These are rules, not learned reading. They cover the common shapes of a
+question, but any new shape needs a new rule. "Is Mary in the kitchen or the
+garden?" is still read as one place called "kitchen or garden". The
+principled next step remains roadmap item 2: induce parse patterns from
+(sentence, meaning) pairs. The rephrasing rules and the probes now provide a
+training and test set for exactly that.
+
+### 15. References
 
 **Compression and count-based language models**
 * M. Mahoney, *Data Compression Explained* (mirror):
@@ -1078,6 +1171,11 @@ Gemma's benchmark numbers are from Table 6 of the Gemma report.
   https://sites.socsci.uci.edu/~lpearl/colareadinggroup/readings/Frank2023_ChildrenLLMs.pdf
 
 **Knowledge, word senses and inheritance**
+* E. Rosch et al., "Basic objects in natural categories", Cognitive Psychology
+  1976.
+* G. Zipf, "The meaning-frequency relationship of words", J. General
+  Psychology 1945.
+* G. Miller et al., "A semantic concordance" (SemCor), HLT 1993.
 * G. Miller, "WordNet: a lexical database for English", CACM 1995; WordNet 3.0
   via the NLTK data mirror: https://github.com/nltk/nltk_data
 * W. Gale, K. Church & D. Yarowsky, "One sense per discourse", HLT 1992.

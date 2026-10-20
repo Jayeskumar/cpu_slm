@@ -229,7 +229,7 @@ def load_wordnet(kb, wn_dir, conf=0.99, definitions=True, max_senses=8):
         return key[d] if d is not None else _wn_name(low)
 
     # how often each sense was tagged in the SemCor corpus: everyday familiarity
-    tags = {}
+    tags, lemma_tags = {}, {}
     sense_path = os.path.join(wn_dir, "index.sense")
     if os.path.exists(sense_path):
         with open(sense_path, encoding="utf-8", errors="replace") as f:
@@ -237,9 +237,24 @@ def load_wordnet(kb, wn_dir, conf=0.99, definitions=True, max_senses=8):
                 t = line.split()
                 if len(t) == 4 and "%1:" in t[0] and t[3] != "0":
                     tags[t[1]] = tags.get(t[1], 0) + int(t[3])
+                    lemma_tags[(t[1], t[0].split("%")[0])] = int(t[3])
     for off, n in tags.items():
         if off in key:
             kb.freq[key[off]] = n
+    # the everyday word for a concept: its most used synonym that means this
+    # concept first ('metal', not 'metallic element'; 'human being', not 'homo')
+    for off, (_, words, _, _) in noun.items():
+        if len(words) < 2:
+            continue
+        own = [w.lower() for w in words
+               if common.get(w.lower(), proper.get(w.lower())) == off]
+        best = max(own, key=lambda w: lemma_tags.get((off, w), 0), default=None)
+        first = words[0].lower()
+        # only where the headword itself is hardly ever used: a speaker who says
+        # 'hallway' must hear 'hallway', not WordNet's more frequent 'hall'
+        if best and best != first and lemma_tags.get((off, first), 0) == 0 and \
+                lemma_tags.get((off, best), 0) > 0:
+            kb.surface.setdefault(key[off], _wn_name(best))
     gloss_facts = []   # resolved once the taxonomy is in
     stats = {"concepts": len(noun), "isa": 0, "in": 0, "part_of": 0, "has": 0, "made_of": 0,
              "definitions": 0, "capital_of": 0, "currency_of": 0, "opposite": 0, "aliases": 0}

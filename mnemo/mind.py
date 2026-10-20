@@ -46,6 +46,7 @@ class Mind:
         self.last = None            # (question text, Answer)
         self.surprises = []
         self._caps = {}             # capitalised names in the current sentence
+        self._spoken = {}           # every name as the speaker wrote it ('John', not 'the john')
         if innate:
             self._innate()
 
@@ -212,6 +213,7 @@ class Mind:
                 key = self.kb.canon(low, proper=True)
                 if key not in self.kb.categories:
                     self.kb.display[key] = name       # the speaker's name for it wins
+                self._spoken[low] = name              # how the speaker names it, for stories
                 i = j + 1
             else:
                 i += 1
@@ -872,7 +874,7 @@ class Mind:
         def rank(f):
             w = self.kb.word(f.s)
             return (f.source == "wordnet", -self.kb.freq.get(f.s, 0), "#" in f.s,
-                    -len(self.kb.senses.get(w, ())), " " in w, len(w))
+                    -len(self.kb.senses.get(w, ())), " " in w, len(w), w)
         return sorted(facts, key=rank)
 
     def _names(self, xs, n=8):
@@ -892,7 +894,7 @@ class Mind:
             for depth in range(4):              # kinds of kinds: 'dog' is a mammal too
                 nxt = []
                 for x in frontier:
-                    for f in kb.inn(x, "isa"):
+                    for f in sorted(kb.inn(x, "isa"), key=lambda f: f.s):
                         if f.truth.f < 0.5 or f.s in seen or len(seen) >= 3000:
                             continue
                         seen.add(f.s)
@@ -929,9 +931,9 @@ class Mind:
             p, sup = self.world.where(q.s)
             if isinstance(p, str):
                 self._record(Answer(Truth(1, 0.9), [], "episodic"))
-                return f"{self._cap(self.kb.ref(q.s))} is in {self.kb.ref(p)}."
+                return f"{self._cap(self._ref(q.s))} is in {self._ref(p)}."
             if isinstance(p, tuple) and p and p[0] != "not":
-                return f"Either in {self.kb.ref(p[0])} or in {self.kb.ref(p[1])}."
+                return f"Either in {self._ref(p[0])} or in {self._ref(p[1])}."
         for k in self._senses_of(q.s):
             if self.kb.out(k, "in") or self.kb.out(k, "part_of"):
                 q.s = k
@@ -951,13 +953,18 @@ class Mind:
                 return f"{self._cap(subj)} {be} {rel} {self.kb.ref(ans[0].value)}."
         return "I don't know."
 
+    def _ref(self, x):
+        """A reference for something that happened in a story: the speaker's
+        own name for it first ('John' is not WordNet's 'john')."""
+        return self._spoken.get(x) or self.kb.ref(x)
+
     def _q_where_before(self, q):
         p = self.world.where_before(q.s, q.o)
-        return f"{self._cap(self.kb.ref(p))}." if p else "I don't know."
+        return f"{self._cap(self._ref(p))}." if p else "I don't know."
 
     def _q_carrying(self, q):
         objs = self.world.carrying(q.s)
-        return (self._cap(self._join([self.kb.ref(o) for o in objs])) + ".") if objs else "Nothing."
+        return (self._cap(self._join([self._ref(o) for o in objs])) + ".") if objs else "Nothing."
 
     def _q_count_carrying(self, q):
         n = len(self.world.carrying(q.s))
@@ -965,29 +972,29 @@ class Mind:
 
     def _q_who_has(self, q):
         h = self.world.current_holder(q.o)
-        return f"{self._cap(self.kb.ref(h))}." if h else "Nobody, as far as I know."
+        return f"{self._cap(self._ref(h))}." if h else "Nobody, as far as I know."
 
     def _q_who_gave(self, q):
         g = self.world.who_gave(q.o, q.extra)
-        return f"{self._cap(self.kb.ref(g))}." if g else "I don't know."
+        return f"{self._cap(self._ref(g))}." if g else "I don't know."
 
     def _q_what_gave(self, q):
         o = self.world.what_gave(q.s, q.extra)
-        return f"{self._cap(self.kb.ref(o))}." if o else "I don't know."
+        return f"{self._cap(self._ref(o))}." if o else "I don't know."
 
     def _q_who_received(self, q):
         r = self.world.who_received(q.o, q.s)
-        return f"{self._cap(self.kb.ref(r))}." if r else "I don't know."
+        return f"{self._cap(self._ref(r))}." if r else "I don't know."
 
     def _q_why_go(self, q):
         st = self.world.why_went(q.s, q.o)
-        return f"{self._cap(self.kb.ref(q.s))} was {st}." if st else "I don't know."
+        return f"{self._cap(self._ref(q.s))} was {st}." if st else "I don't know."
 
     def _q_will_go(self, q):
         place, st = self.world.will_go(q.s)
         if place is None:
             return "I don't know."
-        return (f"Probably to {self.kb.ref(place)}: when someone is {st} they tend to go "
+        return (f"Probably to {self._ref(place)}: when someone is {st} they tend to go "
                 f"there.")
 
     def _q_path(self, q):
@@ -1054,7 +1061,7 @@ class Mind:
         if self.semantic is not None:
             self.semantic.save(os.path.join(directory, "semantic.npz"))
         kb = self.kb
-        state = {"kb": (kb.facts, kb.display, kb.categories, kb.clock),
+        state = {"kb": (kb.facts, kb.display, kb.categories, kb.clock), "spoken": self._spoken,
                  "lexical": {k: getattr(kb, k) for k in self._LEXICAL},
                  "keep_plural": L.KEEP_PLURAL, "world": self.world, "wm": self.wm}
         with open(os.path.join(directory, "mind.pkl"), "wb") as f:
@@ -1088,6 +1095,7 @@ class Mind:
                 setattr(m.kb, k, v)
             L.KEEP_PLURAL |= st.get("keep_plural", set())
             m.world, m.wm = st["world"], st["wm"]
+            m._spoken = st.get("spoken", {})
         return m
 
     def _fallback(self, sent):
