@@ -95,6 +95,8 @@ def is_plural(word):
     return singular(word) != word.lower()
 
 
+_SAME_PLURAL = {"sheep", "fish", "deer", "moose", "salmon", "trout", "cod", "bison", "squid",
+                "shrimp", "elk", "swine", "aircraft", "offspring", "species", "series"}
 _O_ES = {"tomato", "potato", "hero", "echo", "torpedo", "veto", "mosquito", "volcano",
          "buffalo", "domino", "embargo", "tornado", "mango", "flamingo", "cargo", "motto"}
 
@@ -103,7 +105,7 @@ def plural(word):
     for p, s in _IRREGULAR_PLURALS.items():
         if s == word and p != s:
             return p
-    if word in ("sheep", "fish", "deer", "moose"):
+    if word in _SAME_PLURAL or word.split()[-1] in _SAME_PLURAL:
         return word
     if word.endswith("y") and len(word) > 2 and word[-2] not in "aeiou":
         return word[:-1] + "ies"
@@ -437,7 +439,8 @@ def _parse_sentence(sentence, wm=None):
 
 
 def _looks_like_question(low):
-    if re.match(r"^(tell (?:me|user)|describe|explain|list|name)\b", low):
+    if re.match(r"^(tell (?:me|user)|describe|explain|list|name|define|give|show|mention)\b",
+                low):
         return True
     return bool(re.match(r"^(who|what|where|when|why|how|which|is|are|can|could|does|do|did|"
                          r"was|were|has|have)\b", low))
@@ -705,6 +708,86 @@ def _fact_is(s_np, o_np, wm, positive=True):
 
 # -- questions -------------------------------------------------------------
 
+_NOT_A_KIND = {"do", "does", "did", "is", "are", "was", "were", "can", "could", "will",
+               "would", "should", "kind", "type", "sort", "one", "time", "else", "about",
+               "if", "a", "an", "the"} | set(ATTRIBUTE_KINDS)
+_PLACE_KINDS = r"continent|country|state|province|city|town|region|ocean|sea|island"
+
+
+def _parse_natural(low, ent):
+    """Question types people ask that the core patterns do not cover:
+    why-questions about facts, kinds, lists and examples, comparisons,
+    choices, differences, places of a given kind, inverse relations."""
+    m = _rx(r"why (?P<q>(?:is|are|was|were|can|could|does|do|did|has|have) .+)")(low)
+    if m:
+        inner = m["q"]
+        neg = re.search(r"\bnot\b", inner) is not None
+        return [Query("why_q", extra=(re.sub(r"\s*\bnot\b", "", inner), neg))]
+    m = _rx(r"(?:define|what does|what do) (?:the word )?'?(?P<s>[a-z][a-z' -]*?)'?(?: mean)?")(low)
+    if m and (low.startswith("define") or low.endswith(" mean")):
+        return [Query("describe", ent(m["s"].strip("' ")))]
+    m = _rx(r"(?:what is |what's )?(?:the )?meaning of (?:the word )?'?(?P<s>[a-z][a-z -]*?)'?")(low)
+    if m:
+        return [Query("describe", ent(m["s"]))]
+    m = _rx(r"what (?P<k>kind|type|sort) of (?P<c>[a-z]+(?: [a-z]+)?) (?:is|are) " + _s("s"))(low)
+    if m:
+        return [Query("kind", ent(m["s"]), extra=noun(m["c"]))]
+    m = _rx(r"(?:which|what|who) (?:is|are) (?P<c>" + _COMP_RE + r") (?:of )?(?:the two )?"
+            + _s("a") + r" or " + _s("b"))(low)
+    if m:
+        return [Query("compare", ent(m["a"]), COMPARATIVES[m["c"]], ent(m["b"]))]
+    m = _rx(r"(?:is|are) " + _s("s") + r" (?P<c>" + _COMP_RE + r") or (?:" + _COMP_RE +
+            r") than " + _s("o"))(low)
+    if m:
+        return [Query("compare", ent(m["s"]), COMPARATIVES[m["c"]], ent(m["o"]))]
+    m = _rx(r"what is the difference between " + _s("a") + r" and " + _s("b"))(low) or \
+        _rx(r"how (?:is|are|do|does) " + _s("a") + r" differ(?:ent)? from " + _s("b"))(low) or \
+        _rx(r"how are " + _s("a") + r" and " + _s("b") + r" different")(low)
+    if m:
+        return [Query("difference", ent(m["a"]), o=ent(m["b"]))]
+    m = _rx(r"(?:is|was) (?:a |an |the )?(?P<s>[a-z'-]+(?: [a-z'-]+)?) (?:a|an) "
+            r"(?P<a>[a-z][a-z -]*?) or (?:a |an )?(?P<b>[a-z][a-z -]*?)")(low) or \
+        _rx(r"(?:are|were) (?P<s>[a-z'-]+) (?P<a>[a-z'-]+) or (?P<b>[a-z'-]+)")(low)
+    if m and " than" not in m["a"]:
+        return [Query("choice", ent(m["s"]), extra=[noun(m["a"]), noun(m["b"])])]
+    m = _rx(r"(?:which|what) (?P<k>" + _PLACE_KINDS + r") (?:is|are) " + _s("s") +
+            r" (?:in|on|located in|part of)")(low) or \
+        _rx(r"(?:in|on) (?:which|what) (?P<k>" + _PLACE_KINDS + r") (?:is|are) " + _s("s") +
+            r"(?: located| found| situated)?")(low)
+    if m:
+        return [Query("place_kind", ent(m["s"]), extra=m["k"])]
+    m = _rx(_s("s") + r" (?:is|are|was|were) the (?P<r>[a-z]+) of (?:which|what)(?: [a-z]+)?")(low) \
+        or _rx(r"(?:which|what)(?: [a-z]+)? (?:is|are|was|were) " + _s("s") +
+               r" the (?P<r>[a-z]+) of")(low)
+    if m:
+        return [Query("objects", ent(m["s"]), m["r"] + "_of")]
+    m = _rx(r"(?:name|list|give (?:me |user )?|tell (?:me |user )?|show (?:me |user )?|"
+            r"what are |which are |mention )(?:some|a few|several|all|any|the|two|three|"
+            r"four|five|an|a|the names of)?(?: (?:examples?|kinds?|types?|sorts?) of)?"
+            r"(?: (?:a|an|the))? (?P<c>[a-z][a-z -]*?)")(low)
+    if m and (low.startswith(("name", "list", "give", "show", "mention")) or
+              re.search(r"\b(some|a few|several|examples?|kinds? of|types? of|names of)\b", low)):
+        c, _, place = m["c"].partition(" in ")
+        if place:                                      # 'name some countries in Africa'
+            return [Query("which", noun(c), "in", noun(place))]
+        return [Query("examples", noun(c))]
+    m = _rx(r"(?:which|what) (?P<c>[a-z]+(?: [a-z]+)?) (?P<v>can not|can|could|lives? in|"
+            r"lives? on|are found in|is found in|are in|is in|eats?|has|have|makes?|are|is) "
+            + _s("o"))(low)
+    if m and m["c"].split()[0] not in _NOT_A_KIND and m["c"].split()[-1] not in _NOT_A_KIND:
+        v = m["v"]
+        if v.startswith(("live", "are found", "is found", "are in", "is in")):
+            return [Query("which", noun(m["c"]), "in", noun(m["o"]))]
+        if v in ("can", "could", "can not"):
+            return [Query("which", noun(m["c"]), "can", _vp(m["o"]), extra=v != "can not")]
+        if v in ("are", "is"):
+            return [Query("which", noun(m["c"]), "isa", noun(m["o"]))]
+        if v in ("has", "have"):
+            return [Query("which", noun(m["c"]), "has", quantity(m["o"])[1])]
+        return [Query("which", noun(m["c"]), verb_lemma(v), noun(m["o"]))]
+    return None
+
+
 def _parse_question(low, wm):
     def ent(x):
         e = noun(x)
@@ -732,6 +815,9 @@ def _parse_question(low, wm):
     m = _rx(r"where will " + _s("s") + r" (?:go|move|travel|journey|run|walk)")(low)
     if m:
         return [Query("will_go", ent(m["s"]))]
+    q = _parse_natural(low, ent)
+    if q:
+        return q
     m = _rx(r"where (?:is|are|was|were) " + _s("s") + r" before " + _s("p"))(low)
     if m:
         return [Query("where_before", ent(m["s"]), o=noun(m["p"]))]
@@ -846,7 +932,8 @@ def _parse_question(low, wm):
     m = _rx(r"(?:is|are|was|were) " + _s("s") + r" (?P<o>[a-z0-9'-]+)")(low)
     if m:
         s_np, o = m["s"], m["o"]
-        if is_plural(o) and np_is_plural(s_np):
+        if np_is_plural(s_np) and (is_plural(o) or o in ("fish", "sheep", "deer", "moose",
+                                                          "people", "cattle")):
             return [Query("yesno", ent(s_np), "isa", singular(o))]
         return [Query("yesno", ent(s_np), "is", o)]
     m = re.match(r"^(?:can|could) (.+)$", low)
@@ -856,7 +943,8 @@ def _parse_question(low, wm):
             return [Query("yesno", ent(split[0]), "can", _vp(split[1]))]
     m = _rx(r"(?:does|do|did) " + _s("s") + r" (?:have|own) " + _s("o"))(low)
     if m:
-        return [Query("yesno", ent(m["s"]), "has", quantity(m["o"])[1])]
+        qty, o = quantity(m["o"])
+        return [Query("yesno", ent(m["s"]), "has", o, extra=qty if qty and qty > 0 else None)]
     m = re.match(r"^(?:does|do|did) (.+)$", low)
     svo = _split_svo(m.group(1)) if m else None
     if svo and svo[1] not in ("have", "own"):          # 'does copper conduct electricity'

@@ -118,10 +118,10 @@ def correct(reply, gold):
     if "don't know" in r or "don't understand" in r:
         return False
     if gold in ("yes", "no"):
-        neg = r.startswith(("no", "probably not", "maybe not"))
-        pos = r.startswith(("yes", "probably", "maybe")) and not neg
+        neg = re.match(r"(no|probably not|maybe not)\b", r) is not None
+        pos = re.match(r"(yes|probably|maybe)\b", r) is not None and not neg
         return pos if gold == "yes" else neg
-    return re.search(r"\b" + re.escape(gold) + r"\b", r) is not None
+    return any(re.search(r"\b" + re.escape(g) + r"(?:s|es)?\b", r) for g in gold.split("|"))
 
 
 def run(mind, questions, verbose=False):

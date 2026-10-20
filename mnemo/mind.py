@@ -15,6 +15,7 @@ import re
 
 from . import language as L
 from .hdc import HyperSpace
+from .rephrase import arithmetic, rephrase
 from .knowledge import Answer, Fact, Knowledge, Truth
 from .world import World
 
@@ -95,6 +96,10 @@ class Mind:
         if self.cortex is not None and self.learn_language:
             bits = self.cortex.learn(sent + "\n")
             self.surprises.append(bits / max(1, len(sent) + 1))
+        sum_ = arithmetic(sent)
+        if sum_ is not None:
+            return sum_
+        sent, flip = rephrase(sent)
         social = self._social(sent)
         if social is not None:
             return social
@@ -102,7 +107,32 @@ class Mind:
         names = self._remember_names(sent)
         p = L.parse_sentence(sent, self.wm, names)
         if not p.items:
-            return self._fallback(sent)
+            p = self._fragment(sent, names)
+            if p is None:
+                return self._fallback(sent)
+        out = self._respond(p)
+        if flip and out:       # 'is it true that penguins can't fly' was asked the other way
+            out = self._flip(out)
+        return out
+
+    _FLIP = {"Yes.": "No.", "No.": "Yes.", "Probably.": "Probably not.",
+             "Probably not.": "Probably.", "Maybe.": "Maybe not.", "Maybe not.": "Maybe."}
+
+    def _flip(self, reply):
+        for a in sorted(self._FLIP, key=len, reverse=True):
+            if reply.startswith(a):
+                return self._FLIP[a] + reply[len(a):]
+        return reply
+
+    def _fragment(self, sent, names):
+        """'Penguins?' or 'a giraffe' alone: read it as 'what is ...'."""
+        body = sent.strip().rstrip("?.!").strip()
+        if not body or len(body.split()) > 4:
+            return None
+        p = L.parse_sentence(f"What is {body}?", self.wm, names)
+        return p if p.items and all(isinstance(i, L.Query) for i in p.items) else None
+
+    def _respond(self, p):
         out = []
         for it in p.items:
             if isinstance(it, L.Fact):
@@ -111,7 +141,7 @@ class Mind:
                 self.world.observe(it)
                 out.append("")
             elif isinstance(it, L.Query):
-                out.append(self._answer(it, sent))
+                out.append(self._answer(it, p.sentence))
             elif isinstance(it, L.Command):
                 out.append(self._command(it))
         out = [o for o in out if o]
@@ -396,6 +426,12 @@ class Mind:
                 return {"yes": "Yes.", "no": "No.", "maybe": "Maybe."}[r]
         s = self._c(q.s)
         o = q.o if q.r in self._RAW_OBJECT else self._c(q.o)
+        if q.r == "has" and isinstance(q.extra, int) and q.extra > 0:
+            known = self._qty(s, "has", o)
+            if known is not None and known > 0:      # 'No. Birds have two legs.'
+                self._record(Answer(Truth(1.0, 0.9), [Fact(s, "has", o, Truth(1.0, 0.9), known)]))
+                verdict = "Yes" if known == q.extra else "No"
+                return f"{verdict}. {self._cap(self.kb.say(Fact(s, 'has', o, Truth(1.0, 0.9), known)))}."
         a = self._record(self.kb.ask(s, q.r, o))
         if q.r == "isa" and not (a.known and a.truth.f >= 0.5):
             # a clear 'no' from the usual sense of the subject stands ('a shark is not a
@@ -691,6 +727,203 @@ class Mind:
             return f"I don't know anything about {word}."
         return ". ".join(self._cap(x) for x in lines) + "."
 
+    # ------------------------------------------------------------------ natural questions
+    def _yes(self, reply):
+        return reply.startswith(("Yes", "Probably")) and not reply.startswith("Probably not")
+
+    def _no(self, reply):
+        return reply.startswith(("No", "Probably not", "Maybe not"))
+
+    def _q_why_q(self, q):
+        """'Why is a whale not a fish?': answer the inner question and give
+        the reasons -- or correct the question's assumption."""
+        inner, neg = q.extra
+        qs = [i for i in L.parse_sentence(inner + "?", self.wm, self._caps).items
+              if isinstance(i, L.Query)]
+        if not qs:
+            return "I don't understand that yet."
+        reply = self._answer(qs[0], inner)
+        a = self.last
+        if reply.startswith("I don't"):
+            return reply
+        if self._yes(reply) == neg or self._no(reply) != neg:
+            if a is not None and a.how == "direct" and a.premises and reply.count(".") == 1:
+                return f"Actually, {self.kb.say(a.premises[0])}."
+            return "Actually, " + self._decap(reply)
+        if a is None or not (a.premises or a.stmt):
+            return reply
+        if a.how == "direct":
+            return f"I was told so: {self.kb.say(a.premises[0])}. I know no deeper reason."
+        return "Because " + self._decap(self.kb.explain(a))
+
+    def _decap(self, text):
+        """Lower-case a sentence start, unless it is a name ('Tweety is ...')."""
+        first = text.split(" ", 1)[0].rstrip(".,;")
+        if first.lower() in self.kb.display or first in self.kb.display.values():
+            return text
+        return text[:1].lower() + text[1:]
+
+    def _basic(self, chain):
+        """The everyday level of a chain of kinds (Rosch): the one people talk
+        about ('mammal', not 'placental'), else the nearest."""
+        talked = [m for m in chain if any(f.source not in ("wordnet",) for f in self.kb.inn(m, "isa"))]
+        return talked[0] if talked else chain[0]
+
+    def _q_kind(self, q):
+        """'What kind of animal is a whale?' -> 'A mammal (more precisely, a
+        cetacean).'"""
+        kb = self.kb
+        for k in self._senses_of(q.extra):
+            for s in self._senses_of(q.s):
+                cats = [m for m, _ in kb.categories_of(s)]
+                if k not in cats:
+                    continue
+                chain = [m for m in cats[:cats.index(k)]
+                         if kb.bare(m) not in kb._TOO_GENERAL and kb.ask(m, "isa", k).known
+                         and kb.ask(m, "isa", k).truth.f >= 0.5]
+                if not chain:
+                    return f"It is simply {kb.article(k)}."
+                basic = self._basic(chain)
+                self._record(kb.ask(s, "isa", basic))
+                more = f" (more precisely, {kb.article(chain[0])})" if chain[0] != basic else ""
+                return self._cap(kb.article(basic)) + more + "."
+        return "I don't know."
+
+    def _q_compare(self, q):
+        """'Which is bigger, an elephant or a mouse?'"""
+        kb = self.kb
+        s, o = self._c(q.s), self._c(q.o)
+        for x, y in ((s, o), (o, s)):
+            a = kb.ask(x, q.r, y)
+            if a.known:
+                winner = x if a.truth.f >= 0.5 else y
+                self._record(a)
+                name = kb.display.get(winner) or (kb.article(winner) if kb.generic(winner)
+                                                  else kb.ref(winner))
+                return f"{self._cap(name)}. {kb.explain(a, brief=True)}"
+        return "I don't know."
+
+    def _q_choice(self, q):
+        """'Is a tomato a fruit or a vegetable?'"""
+        kb = self.kb
+        verdicts = [(t, self._q_yesno(L.Query("yesno", q.s, "isa", t)), self.last)
+                    for t in q.extra]
+        yes = [(t, r, a) for t, r, a in verdicts if self._yes(r)]
+        no = [(t, r, a) for t, r, a in verdicts if self._no(r)]
+        if len(yes) == 1:
+            t, r, a = yes[0]
+            self._record(a)
+            reason = r.split(". ", 1)[1] if ". " in r else ""
+            return f"{self._cap(kb.article(self._c(t)))}. {reason}".strip()
+        s = self._c(q.s)
+        many = kb.many(s)
+        subj = kb.name(s, True) if many else kb.ref(s)
+        kinds = self._join([kb.name(self._c(t), True) if many else kb.article(self._c(t))
+                            for t in q.extra])
+        if len(yes) == len(q.extra):
+            return f"Both: {subj} {'are' if many else 'is'} {kinds}."
+        if len(no) == len(q.extra):
+            return f"Neither: {subj} {'are' if many else 'is'} not {kinds.replace(' and ', ' or ')}."
+        return "I don't know."
+
+    def _q_difference(self, q):
+        """'What is the difference between a whale and a fish?': where they
+        part in the taxonomy, and what each is."""
+        kb = self.kb
+        a, b = self._c(q.s), self._c(q.o)
+        lines = []
+        cats_b = dict(kb.categories_of(b))
+        if a in cats_b:
+            lines.append(f"{self._cap(kb.name(a, True))} are a kind of {kb.word(b)}")
+        elif b in dict(kb.categories_of(a)):
+            lines.append(f"{self._cap(kb.name(b, True))} are a kind of {kb.word(a)}")
+        else:
+            for p, ans in kb.categories_of(a):
+                if p in cats_b and kb.bare(p) not in kb._TOO_GENERAL:
+                    ca, cb = ans.premises, cats_b[p].premises
+                    ba = ca[-2].o if len(ca) > 1 else a
+                    bb = cb[-2].o if len(cb) > 1 else b
+                    lines.append(f"{self._cap(kb.name(a, True))} are {kb.name(ba, True)}, while "
+                                 f"{kb.name(b, True)} are {kb.name(bb, True)}; both are "
+                                 f"{kb.name(p, True)}")
+                    break
+        for x in (a, b):
+            if x in kb.definitions:
+                lines.append(f"{self._cap(kb.word(x))}: {self._gloss(x, 120)}")
+        return ". ".join(lines) + "." if lines else "I don't know."
+
+    def _q_place_kind(self, q):
+        """'Which continent is Kenya in?'"""
+        kb = self.kb
+        kinds = self._senses_of(q.extra)
+        for s in self._senses_of(q.s):
+            for x, a in kb.reach(s, "in").items():
+                if any(kb.ask(x, "isa", k).known and kb.ask(x, "isa", k).truth.f >= 0.5
+                       for k in kinds):
+                    self._record(a)
+                    reason = f" {kb.explain(a, brief=True)}" if len(a.premises) > 1 else ""
+                    return f"{self._cap(kb.ref(x))}.{reason}"
+        return "I don't know."
+
+    def _familiar(self, facts):
+        """What the user or the pack said first, then everyday words: a word
+        with many senses is a frequent word (Zipf's law of meaning), so 'dog'
+        comes before 'placental'."""
+        def rank(f):
+            w = self.kb.word(f.s)
+            return (f.source == "wordnet", -self.kb.freq.get(f.s, 0), "#" in f.s,
+                    -len(self.kb.senses.get(w, ())), " " in w, len(w))
+        return sorted(facts, key=rank)
+
+    def _names(self, xs, n=8):
+        kb = self.kb
+        out = []
+        for x in xs:
+            w = kb.display.get(x) or kb.name(x, kb.generic(x) or not kb.is_proper(x))
+            if w not in out:
+                out.append(w)
+        return self._join(out[:n])
+
+    def _q_examples(self, q):
+        """'Name some birds.'"""
+        kb = self.kb
+        for c in self._senses_of(q.s):
+            found, frontier, seen = [], [c], {c}
+            for depth in range(4):              # kinds of kinds: 'dog' is a mammal too
+                nxt = []
+                for x in frontier:
+                    for f in kb.inn(x, "isa"):
+                        if f.truth.f < 0.5 or f.s in seen or len(seen) >= 3000:
+                            continue
+                        seen.add(f.s)
+                        nxt.append(f.s)
+                        if depth and kb.is_proper(f.s):
+                            continue            # 'Smith' is a mammal only via 'person'
+                        if c in kb.taxa and f.s not in kb.taxa and f.source == "wordnet":
+                            continue            # examples of an animal kind are animals
+                        found.append(f)
+                frontier = nxt
+            if found:
+                return self._cap(self._names([f.s for f in self._familiar(found)], 6)) + "."
+        return "I don't know any."
+
+    def _q_which(self, q):
+        """'Which animals can fly?', 'What animals live in the ocean?'"""
+        kb = self.kb
+        c = self._c(q.s)
+        positive = q.extra is not False
+        if q.r == "isa":
+            facts = [f for f in kb.inn(self._c(q.o), "isa") if f.truth.f >= 0.5]
+        else:
+            o = q.o if q.r in self._RAW_OBJECT else self._c(q.o)
+            facts = [f for f in kb.inn(o, q.r) if (f.truth.f >= 0.5) == positive]
+        keep = [f for f in self._familiar(facts)
+                if f.s == c or (kb.ask(f.s, "isa", c).known and kb.ask(f.s, "isa", c).truth.f >= 0.5)]
+        if not keep:
+            return "I don't know any."
+        self._record(Answer(keep[0].truth, [keep[0]]))
+        return self._cap(self._names([f.s for f in keep])) + "."
+
     def _q_where(self, q):
         if self.world.knows(q.s) and (self._dynamic(q.s) or not self.kb.out(q.s, "in")):
             p, sup = self.world.where(q.s)
@@ -809,7 +1042,7 @@ class Mind:
 
     # ------------------------------------------------------------------ persistence
     _LEXICAL = ("definitions", "senses", "aliases", "proper", "words", "surface", "primed",
-                "mass", "stuff", "taxa", "loaded")
+                "mass", "stuff", "taxa", "loaded", "freq")
 
     def save(self, directory):
         """Save the whole mind (cortex, semantic memory, facts, episodes)."""

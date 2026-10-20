@@ -146,6 +146,7 @@ class Knowledge:
         self.mass = set()       # mass nouns ('gold', 'water'): 'gold is', not 'gold are'
         self.stuff = set()      # substances and foods: a bare 'Chocolate is ...' is not a name
         self.taxa = set()       # animal and plant classes (disjoint siblings)
+        self.freq = {}          # concept -> how often its sense occurs in text (SemCor)
         self.authority = {"wordnet", "pack", "innate"}  # curated sources
         self.loaded = set()     # bulk sources already fed ('wordnet', 'pack:general')
 
