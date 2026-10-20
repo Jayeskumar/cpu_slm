@@ -889,10 +889,10 @@ The training script, `tools/train_lstm.py`, resumes from checkpoints.
 | Kneser-Ney 5-gram (our exact reference) | counts | 141.2 |
 | Mnemo, long-term memory frozen | 138 MB of counts | 125.4 |
 | Mnemo, online | 138 MB of counts | 113.0 |
-| LSTM, 2×512, numpy on CPU (ours; interim, epoch 6) | 9.3M weights | 112.8 |
-| **Mnemo frozen + LSTM** (weight tuned on validation; interim) | both | **92.8** |
-| **Mnemo online + LSTM** (weight tuned on validation; interim) | both | **86.6** |
-| Mnemo online + LSTM, weight learned online (no validation data; interim) | both | 86.4 |
+| LSTM, 2×512, numpy on CPU (ours; validation 82.2) | 9.3M weights | 79.4 |
+| **Mnemo frozen + LSTM** (weight tuned on validation) | both | **72.8** |
+| **Mnemo online + LSTM** (weight tuned on validation) | both | **69.5** |
+| Mnemo online + LSTM, weight learned online (no validation data) | both | 69.4 |
 | *for reference:* RNNLM + KN5 + cache (Mikolov et al. 2011) | | 97.5 |
 | *for reference:* LSTM medium, 650 units (Zaremba et al. 2014) | 20M, GPU | 82.7 |
 | *for reference:* LSTM large, 1500 units (Zaremba et al. 2014) | 66M, GPU | 78.4 |
@@ -902,8 +902,17 @@ sum over its letters plus the space that ends it (the line break for `<eos>`).
 Its probabilities over in-vocabulary words sum to at most one, so the mixed
 perplexity is an honest upper bound (`tools/hybrid_eval.py`). A context-gated
 weight (bins of the previous word's surprise) gained only 0.1 perplexity, so the
-tool uses one weight. The numbers above are from an interim LSTM checkpoint
-(epoch 6 of 25); training continues.
+tool uses one weight.
+
+* **The weight.** Tuned on validation, the LSTM's weight comes out at
+  λ = 0.74, next to the test-set optimum (0.745).
+* **Mnemo's contribution.** It is largest where it adapts. Online, it cuts
+  the LSTM's perplexity by 12%; frozen, by 8%.
+* **An earlier checkpoint.** At epoch 6 the LSTM scored 112.8 alone, and
+  86.6 mixed with online Mnemo.
+* **Reproducing the run.** The logged run (`results/ptb_lstm_hybrid.txt`)
+  restarted from its epoch-3 checkpoint after a learning-rate-schedule
+  bug was fixed. Running the current script gives a clean run.
 
 #### 12.3 Why the mixture works
 
@@ -963,7 +972,7 @@ small.
 | MMLU (5-shot) | 42.3 | not attempted: it cannot read exam questions |
 | HellaSwag / PIQA / ARC-e (0-shot) | 71.4 / 77.3 / 73.2 | not attempted |
 | GSM8K (maj@1) / HumanEval | 17.7 / 22.0 | not attempted: no arithmetic word problems, no code |
-| PTB perplexity | not reported (different tokenizer) | 113.0 counts only; 86.6 mixed with the LSTM (interim) |
+| PTB perplexity | not reported (different tokenizer) | 113.0 counts only; 69.5 mixed with the LSTM |
 | General-knowledge probe (§11.5) | not measured here | 89% held-out (first run), 100% on a second held-out set |
 | Story reasoning (bAbI-style, ours) | not measured here | 100% on 19 tasks |
 | Teach a new fact | fine-tuning, or keep it in the prompt | one sentence; used immediately and saved |

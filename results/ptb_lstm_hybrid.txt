@@ -1,0 +1,54 @@
+# LSTM (2x512, tied, dropout 0.5, numpy, CPU) training log
+vocab 10000, train 929589 tokens, 9.33M parameters, hidden 512 x 2, dropout 0.5
+epoch 1 lr 1.0000 train ppl 418.13 valid ppl 214.85 (7.9 min) *
+epoch 2 lr 0.6000 train ppl 192.08 valid ppl 157.89 (7.4 min) *
+epoch 3 lr 0.3600 train ppl 154.06 valid ppl 137.36 (7.9 min) *
+--- lr schedule fixed (decay only when valid ppl improves < 1%); resuming after epoch 3 with lr 1.0 ---
+resumed at epoch 3 lr 1.0000 best 137.36
+vocab 10000, train 929589 tokens, 9.33M parameters, hidden 512 x 2, dropout 0.5
+epoch 4 lr 1.0000 train ppl 139.76 valid ppl 134.79 (7.7 min) *
+epoch 5 lr 1.0000 train ppl 122.83 valid ppl 122.55 (7.4 min) *
+epoch 6 lr 1.0000 train ppl 118.01 valid ppl 115.73 (7.6 min) *
+epoch 7 lr 1.0000 train ppl 117.47 valid ppl 108.97 (7.2 min) *
+epoch 8 lr 1.0000 train ppl 110.25 valid ppl 106.11 (7.2 min) *
+epoch 9 lr 1.0000 train ppl 104.70 valid ppl 102.74 (7.1 min) *
+epoch 10 lr 1.0000 train ppl 100.41 valid ppl 99.88 (6.8 min) *
+epoch 11 lr 1.0000 train ppl 96.90 valid ppl 98.20 (7.5 min) *
+epoch 12 lr 1.0000 train ppl 93.78 valid ppl 97.17 (8.0 min) *
+epoch 13 lr 1.0000 train ppl 91.43 valid ppl 95.72 (7.8 min) *
+epoch 14 lr 1.0000 train ppl 89.27 valid ppl 94.50 (7.4 min) *
+epoch 15 lr 1.0000 train ppl 87.28 valid ppl 93.16 (7.6 min) *
+epoch 16 lr 1.0000 train ppl 85.47 valid ppl 92.77 (7.6 min) *
+epoch 17 lr 0.6000 train ppl 78.70 valid ppl 88.56 (7.3 min) *
+epoch 18 lr 0.6000 train ppl 75.44 valid ppl 87.51 (7.5 min) *
+epoch 19 lr 0.6000 train ppl 73.58 valid ppl 86.89 (7.8 min) *
+epoch 20 lr 0.3600 train ppl 69.49 valid ppl 85.12 (7.5 min) *
+epoch 21 lr 0.3600 train ppl 67.75 valid ppl 84.82 (7.6 min) *
+epoch 22 lr 0.2160 train ppl 65.16 valid ppl 83.67 (7.8 min) *
+epoch 23 lr 0.2160 train ppl 63.84 valid ppl 83.25 (7.7 min) *
+epoch 24 lr 0.1296 train ppl 62.32 valid ppl 82.72 (7.5 min) *
+epoch 25 lr 0.0778 train ppl 61.37 valid ppl 82.20 (7.1 min) *
+valid ppl 82.22 over 73760 predicted tokens
+test ppl 79.35 over 82430 predicted tokens
+
+# rescored with mnemo/neural.py token_logprobs (one log-prob per predicted token)
+valid 73759 ppl 82.23 12s
+test 82429 ppl 79.35 13s
+
+# Mnemo online + LSTM (tools/hybrid_eval.py)
+data/ptb/ptb.test.txt: 82430 tokens (82429 scored by both models)
+  Mnemo alone    ppl   113.01   (all tokens: 113.02)
+  LSTM alone     ppl    79.35
+  weight tuned on data/ptb/ptb.valid.txt: lam = 0.744 (valid ppl 69.99)
+  mixture        ppl    69.50   (lam = 0.744)
+  mixture online ppl    69.38   (weight learned while reading)
+  (oracle lam = 0.745 would give 69.50)
+
+# Mnemo static + LSTM (tools/hybrid_eval.py)
+data/ptb/ptb.test.txt: 82430 tokens (82429 scored by both models)
+  Mnemo alone    ppl   125.44   (all tokens: 125.44)
+  LSTM alone     ppl    79.35
+  weight tuned on data/ptb/ptb.valid.txt: lam = 0.787 (valid ppl 73.82)
+  mixture        ppl    72.77   (lam = 0.787)
+  mixture online ppl    72.70   (weight learned while reading)
+  (oracle lam = 0.797 would give 72.77)

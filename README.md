@@ -12,8 +12,10 @@ what weight-based learning adds.
   matches the classic Kneser-Ney + cache baseline (125.4 vs 125.7 perplexity).
   Learning online, it beats a small LSTM (113.0 vs 114.5), and it still
   reaches 117.7 in only 35 MB.
-* **Counts plus a few weights** do better still. Mixed with the CPU-trained
-  LSTM, it reaches **86.6** on Penn Treebank (interim: the LSTM is still training).
+* **Counts plus a few weights** do better still. A 9.3M-parameter LSTM,
+  trained on the CPU in numpy, scores 79.4 on Penn Treebank. Mixed with
+  Mnemo's counts it reaches **69.5**. That beats a 66M-parameter GPU LSTM
+  (78.4).
 * It **can be fed general knowledge.** WordNet (82k concepts) and a curated
   pack of about 870 facts load in 6 s into a 23 MB brain (about 200 MB of RAM
   once loaded). It scored 89% on held-out general-knowledge questions the
@@ -178,9 +180,12 @@ python3 tools/hybrid_eval.py --text data/ptb/ptb.test.txt --mnemo models/mnemo_p
     --valid-mnemo models/mnemo_ptb.valid.online.f32 --valid-lstm models/lstm_ptb.valid_logp.npy
 ```
 
-Counting memories remember exactly and adapt within a document. The LSTM
-generalises across similar contexts. Because their errors differ, a simple
-word-level mixture beats both (see the table below and RESEARCH.md §12).
+On Penn Treebank it reaches 79.4 test perplexity after 25 epochs (about 3
+hours). Counting memories remember exactly and adapt within a document. The
+LSTM generalises across similar contexts. Because their errors differ, a
+simple word-level mixture beats both: **69.5** with Mnemo learning online,
+and 72.8 with its long-term memory frozen (see the table below and
+RESEARCH.md §12).
 
 ## Can it be better than Gemma 1?
 
@@ -296,12 +301,13 @@ evaluation.
 | **Mnemo, online, tiny** | **35 MB** | **117.7** |
 | **Mnemo, online, default** | 138 MB | **113.0** |
 | **Mnemo, online, large** | 225 MB | **112.0** |
-| our LSTM, 2×512, numpy on CPU (interim, epoch 6) | 9.3M weights | 112.8 |
-| **Mnemo frozen + our LSTM** (interim) | 138 MB + 9.3M weights | **92.8** |
-| **Mnemo online + our LSTM** (interim) | 138 MB + 9.3M weights | **86.6** |
+| our LSTM, 2×512, numpy on CPU | 9.3M weights | 79.4 |
+| **Mnemo frozen + our LSTM** | 138 MB + 9.3M weights | **72.8** |
+| **Mnemo online + our LSTM** | 138 MB + 9.3M weights | **69.5** |
 
 Training takes about 40 s on one core for Mnemo, and about 3 h on 3 cores for
-the LSTM.
+the LSTM. Zaremba et al.'s GPU LSTMs score 82.7 (medium, 20M parameters) and
+78.4 (large, 66M).
 
 The rest of the results:
 * **WikiText-2.** Kneser-Ney 5-gram, our reference: 220.1. Mnemo with
