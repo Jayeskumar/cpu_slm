@@ -185,14 +185,18 @@ class Mind:
                (r"\bdo user\b", "does user"), (r"\byour\b", "mnemo's"),
                (r"\bare you\b", "is mnemo"), (r"\byou are\b", "mnemo is"), (r"\byou\b", "mnemo")]
 
+    _AUX = _COMMON | {"am", "should", "would", "will", "may", "shall", "must", "might"}
+
     def _persons(self, sent):
-        """First and second person become the entities 'user' and 'mnemo'."""
+        """First and second person become the entities 'user' and 'mnemo'
+        (but the I of 'World War I' and 'Elizabeth I' is a numeral)."""
         if not re.search(r"\b(i|i'm|me|my|you|your)\b", sent, re.I):
             return sent
-        low = sent
+        low = re.sub(r"\b([A-Z][a-z]+) I\b", lambda m: m.group(0) if m.group(1).lower() in
+                     self._AUX else m.group(1) + " \u2160", sent)
         for pat, rep in self._PERSON:
             low = re.sub(pat, rep, low, flags=re.I)
-        return low
+        return low.replace("\u2160", "I")
 
     def _remember_names(self, sent):
         """Capitalised names in a sentence become display names; returns
@@ -250,7 +254,13 @@ class Mind:
         return True
 
     # ------------------------------------------------------------------ facts
-    _RAW_OBJECT = {"can", "does", "is", "opposite"}   # object is a verb or an adjective
+    _RAW_OBJECT = {"can", "does", "is", "opposite",   # object is a verb or an adjective,
+                   "born", "died", "began", "ended",   # a year, or some other value
+                   "nationality", "area", "symbol", "atomic_number", "used_for", "discovered_by",
+                   "year"}
+    # one value at a time: born in 1756 means not born in 1800
+    _FUNCTIONAL = {"born", "died", "began", "ended", "born_in", "area", "symbol", "atomic_number",
+                   "year"}
 
     def _c(self, x):
         """The concept a word in the current sentence names."""
@@ -414,6 +424,14 @@ class Mind:
         return holds[q.r]
 
     def _q_yesno(self, q):
+        if q.r in self._FUNCTIONAL:         # 'Was Mozart born in 1756?'
+            k, f = self._first(q.s, q.r)
+            if f is not None:
+                objs = [q.o] if q.r in self._RAW_OBJECT else self._senses_of(q.o)
+                same = any(f.o.lower() == x.lower() or x in self.kb.reach(f.o, "in")
+                           for x in objs)
+                self._record(Answer(f.truth, [f]))
+                return "Yes." if same else f"No. {self._cap(self.kb.say(f))}."
         if q.r in self._AXIS:
             a = self.kb.ask(q.s, q.r, q.o)
             if not a.known:
@@ -435,6 +453,21 @@ class Mind:
                 verdict = "Yes" if known == q.extra else "No"
                 return f"{verdict}. {self._cap(self.kb.say(Fact(s, 'has', o, Truth(1.0, 0.9), known)))}."
         a = self._record(self.kb.ask(s, q.r, o))
+        if q.r == "is" and not a.known and not self._own(s):
+            for k in self.kb.other_senses(q.s, s)[:4]:      # Darwin the naturalist, not the town
+                f = self.kb.get(k, "is", o)
+                if f is not None:
+                    self._record(Answer(f.truth, [f]))
+                    v = "Yes" if f.truth.f >= 0.5 else "No"
+                    g = self._gloss(k)
+                    if not g:
+                        return f"{v}."
+                    the = "" if re.match(r"(?:a|an|the)\b", g) else "the "
+                    return f"{v}, if you mean {the}{g}" + ("" if g.endswith("\u2026") else ".")
+        if q.r == "border" and not a.known:
+            got = self._borders(q.s, q.o)
+            if got:
+                return got
         if q.r == "isa" and not (a.known and a.truth.f >= 0.5):
             # a clear 'no' from the usual sense of the subject stands ('a shark is not a
             # mammal', whatever a 'shark' of a person may be); the object may still be
@@ -454,6 +487,25 @@ class Mind:
         if a.how == "direct":
             return f"{v}."
         return f"{v}. {self.kb.explain(a, brief=True)}"
+
+    def _borders(self, s_word, o_word):
+        """The border lists of the world data are complete, so a border that is
+        not on them is not there ('Does Spain border Germany?' No)."""
+        kb = self.kb
+        complete = [k for k in self._senses_of(s_word) if any(
+            f.source == "world" for f in kb.out(k, "border") + kb.out(k, "area"))]
+        others = [k for k in self._senses_of(o_word) if any(
+            f.source == "world" for f in kb.out(k, "border") + kb.out(k, "area"))]
+        if not complete or not others:
+            return None
+        s, o = complete[0], others[0]
+        if kb.get(s, "border", o) is not None:
+            return "Yes."
+        near = sorted(f.o for f in kb.out(s, "border") if f.truth.f >= 0.5)
+        self._record(Answer(Truth(0.0, 0.85), kb.out(s, "border")[:3], "closed world"))
+        if not near:
+            return f"No. {self._cap(kb.ref(s))} borders no other country."
+        return f"No. {self._cap(kb.ref(s))} borders {self._join([kb.ref(x) for x in near])}."
 
     def _own(self, x):
         """Has the user told me things about x (rather than only WordNet)?"""
@@ -521,6 +573,9 @@ class Mind:
                 break
         if not ans:
             return "I don't know."
+        if q.r == "used_for":       # what a hammer is for, not what any tool is for
+            near = min(a.dist for a in ans)
+            ans = [a for a in ans if a.dist == near]
         self._record(ans[0])
         if q.r in ("can", "does"):
             verbs = [("probably " if a.truth.c < 0.7 else "") + a.value for a in ans[:6]]
@@ -608,6 +663,10 @@ class Mind:
                                         "inheritance"))
                     return (f"{self._cap(str(L.NUMBER_WORDS.get(g.qty, g.qty)))}. "
                             f"{self.kb.explain(self.last)}")
+            if self._members(self._senses_of(o_word))[1]:   # 'how many planets does the
+                got = self._q_count(L.Query("count", o_word, "in", s_word))   # solar system have'
+                if not got.startswith("I don't"):
+                    return got
             return "I don't know."
         if f.qty is None or f.qty < 0:
             return "I don't know how many."
@@ -707,11 +766,21 @@ class Mind:
             terms = [kb.article(c) if be == "is" else kb.name(c, True) for c in kinds]
             lines.append(f"{subj} {be} {self._join(terms)}")
         facts = [f for f in kb.out(s) if f.source != "innate" and f.r != "isa"]
-        facts.sort(key=lambda f: (f.source in kb.authority, -kb.activation(f)))
+        nat = {f.o.lower() for f in facts if f.r == "nationality"}
+        facts = [f for f in facts if not (f.r == "is" and f.o in nat)]    # 'English' once
+        facts.sort(key=lambda f: (f.source in kb.authority, self._LIFE.get(f.r, 9),
+                                  -kb.activation(f)))
+        span = {f.r: f for f in facts if f.r in self._LIFE}
+        for a, b, verb in (("born", "died", "lived"), ("began", "ended", "lasted")):
+            if a in span and b in span:      # 'Newton lived from 1642 to 1727'
+                lines.append(f"{subj} {verb} from {span[a].o} to {span[b].o}")
+                facts = [f for f in facts if f is not span[a] and f is not span[b]]
         for f in facts[:5]:
             lines.append(kb.say(f))
-        if s in kb.words:
-            lines.append("also called " + self._join(kb.words[s][:3]))
+        others = [w for w in kb.words.get(s, []) if w.lower() not in
+                  (kb.display.get(s, "").lower(), word)]
+        if others:
+            lines.append("also called " + self._join(others[:3]))
         famous = proper and s in kb.definitions      # Einstein's abilities are not news
         inh = [] if famous else [a for a in kb.objects(s, "can") if a.how != "direct"][:4]
         if inh:
@@ -728,6 +797,9 @@ class Mind:
                 return f"I know the word '{word}' from reading; it goes with {sim}."
             return f"I don't know anything about {word}."
         return ". ".join(self._cap(x) for x in lines) + "."
+
+    _LIFE = {"born": 0, "died": 1, "began": 0, "ended": 1, "year": 0, "nationality": 2,
+             "from": 3, "born_in": 3}
 
     # ------------------------------------------------------------------ natural questions
     def _yes(self, reply):
@@ -791,8 +863,12 @@ class Mind:
                 return self._cap(kb.article(basic)) + more + "."
         return "I don't know."
 
+    # comparisons the numbers decide: by area, or by year of birth (older = born earlier)
+    _BY_NUMBER = {"bigger_than": ("area", 1), "smaller_than": ("area", -1),
+                  "older_than": ("born", -1), "younger_than": ("born", 1)}
+
     def _q_compare(self, q):
-        """'Which is bigger, an elephant or a mouse?'"""
+        """'Which is bigger, an elephant or a mouse?', '... France or Spain?'"""
         kb = self.kb
         s, o = self._c(q.s), self._c(q.o)
         for x, y in ((s, o), (o, s)):
@@ -803,6 +879,21 @@ class Mind:
                 name = kb.display.get(winner) or (kb.article(winner) if kb.generic(winner)
                                                   else kb.ref(winner))
                 return f"{self._cap(name)}. {kb.explain(a, brief=True)}"
+        if q.r in self._BY_NUMBER:
+            attr, sign = self._BY_NUMBER[q.r]
+            got = []
+            for word in (q.s, q.o):
+                k, f = self._first(word, attr)
+                v = None if f is None else self._year(f.o) if attr == "born" else float(f.o)
+                if v is None:
+                    break
+                got.append((v, k, f))
+            if len(got) == 2 and got[0][0] != got[1][0]:
+                (va, a, fa), (vb, b, fb) = got
+                self._record(Answer(Truth(1.0, min(fa.truth.c, fb.truth.c)), [fa, fb],
+                                    "comparison"))
+                winner = a if (va - vb) * sign > 0 else b
+                return f"{self._cap(kb.ref(winner))}. {self._cap(kb.say(fa))}, and {kb.say(fb)}."
         return "I don't know."
 
     def _q_choice(self, q):
@@ -925,6 +1016,414 @@ class Mind:
             return "I don't know any."
         self._record(Answer(keep[0].truth, [keep[0]]))
         return self._cap(self._names([f.s for f in keep])) + "."
+
+    # ------------------------------------------------------------------ the wider world
+    @staticmethod
+    def _year(v):
+        """'1564' -> 1564, '470 BC' -> -470; None if v is not a year."""
+        m = re.fullmatch(r"(\d{1,4})( BC)?", str(v).strip())
+        if not m:
+            return None
+        return -int(m.group(1)) if m.group(2) else int(m.group(1))
+
+    def _first(self, word, *rels):
+        """The first sense of a word with a fact of one of these relations, and
+        the fact (Newton the physicist has a birth year; the unit has none)."""
+        for k in self._senses_of(word):
+            for r in rels:
+                f = next((f for f in self.kb.out(k, r) if f.truth.f >= 0.5), None)
+                if f is not None:
+                    return k, f
+        return None, None
+
+    def _spelled(self, word):
+        return self._caps.get(word, word)
+
+    def _q_when(self, q):
+        """'When was Shakespeare born?', 'When did World War II end?', 'When
+        was the French Revolution?'"""
+        kb = self.kb
+        k, f = self._first(q.s, *([q.r, "year"] if q.r in ("began", "ended") else [q.r] if q.r
+                                 else ["began", "born", "year"]))
+        if f is None:
+            return "I don't know."
+        end = None if q.r or f.r == "year" else \
+            next(iter(kb.out(k, "ended" if f.r == "began" else "died")), None)
+        if end is not None:
+            self._record(Answer(f.truth, [f, end]))
+            verb = "lived" if f.r == "born" else "lasted"
+            return f"{self._cap(kb.ref(k))} {verb} from {f.o} to {end.o}."
+        self._record(Answer(f.truth, [f]))
+        return self._cap(kb.say(f)) + "."
+
+    def _q_lifespan(self, q):
+        """'How old was Mozart when he died?' (from the years alone, so about)"""
+        kb = self.kb
+        for k in self._senses_of(q.s):
+            b = next((f for f in kb.out(k, "born") if self._year(f.o) is not None), None)
+            d = next((f for f in kb.out(k, "died") if self._year(f.o) is not None), None)
+            if b is not None and d is not None:
+                self._record(Answer(Truth(1.0, min(b.truth.c, d.truth.c)), [b, d], "arithmetic"))
+                age = self._year(d.o) - self._year(b.o)
+                return f"About {age}: {kb.ref(k)} was born in {b.o} and died in {d.o}."
+        return "I don't know."
+
+    def _q_born_first(self, q):
+        """'Who was born first, Newton or Einstein?'"""
+        kb = self.kb
+        got = []
+        for word in (q.s, q.o):
+            k, f = self._first(word, "born", "began")
+            if f is None or self._year(f.o) is None:
+                return f"I don't know when {self._spelled(word)} was born."
+            got.append((self._year(f.o), k, f))
+        (ya, a, fa), (yb, b, fb) = got
+        self._record(Answer(Truth(1.0, min(fa.truth.c, fb.truth.c)), [fa, fb], "comparison"))
+        if ya == yb:
+            return f"Neither: {kb.say(fa)}, and so was {kb.ref(b)}."
+        return f"{self._cap(kb.ref(a if ya < yb else b))}. {self._cap(kb.say(fa))}, and {kb.say(fb)}."
+
+    def _q_origin(self, q):
+        """'Where was Gandhi from?', 'Where was Einstein born?', 'Where do
+        kangaroos come from?'"""
+        kb = self.kb
+        k, f = self._first(q.s, *(("born_in",) if q.extra else ("from", "born_in")))
+        if f is not None:
+            self._record(Answer(f.truth, [f]))
+            return self._cap(kb.say(f)) + "."
+        k, f = self._first(q.s, *(("from", "nationality") if q.extra else ("nationality",)))
+        if f is not None:                                # 'Mozart was Austrian'
+            self._record(Answer(f.truth, [f]))
+            return ("I don't know where, but " if q.extra else "") + \
+                (kb.say(f) if q.extra else self._cap(kb.say(f))) + "."
+        if q.extra:
+            return "I don't know."
+        for k in self._senses_of(q.s):
+            ans = kb.objects(k, "in")
+            if ans:
+                a = self._record(ans[0])
+                gen = kb.generic(k)
+                subj = kb.name(k, True) if gen else kb.ref(k)
+                return f"{self._cap(subj)} {'come' if gen else 'comes'} from {kb.ref(a.value)}."
+        return "I don't know."
+
+    def _q_by_attr(self, q):
+        """'What element has the symbol Na?', 'Which element has atomic number 8?'"""
+        kb = self.kb
+        for v in dict.fromkeys((q.o, q.o.capitalize(), q.o.upper())):
+            f = next((f for f in kb.inn(v, q.r) if f.truth.f >= 0.5), None)
+            if f is not None:
+                self._record(Answer(f.truth, [f]))
+                return f"{self._cap(kb.word(f.s))}: {kb.say(f)}."
+        return "I don't know."
+
+    def _isa(self, x, kinds):
+        cats = {x} | {m for m, _ in self.kb.categories_of(x)}
+        return any(k in cats for k in kinds) and not any(
+            self.kb.get(x, "isa", k) is not None and self.kb.get(x, "isa", k).truth.f < 0.5
+            for k in kinds)
+
+    def _facts_of(self, r):
+        return [f for f in self.kb.facts.values() if f.r == r and f.truth.f >= 0.5]
+
+    def _within(self, x, region):
+        return not region or any(r in self.kb.reach(x, "in") for r in region)
+
+    _EXTREME = {"largest": max, "biggest": max, "smallest": min}
+
+    def _extreme(self, cats, region, pick, attr="area"):
+        """The largest or smallest of a kind by the numbers ('the largest
+        country in Africa' by area)."""
+        kb = self.kb
+        facts = []
+        for f in self._facts_of(attr):
+            try:
+                facts.append((float(f.o), f))
+            except ValueError:
+                continue
+        cands = []
+        for c in cats:              # the usual sense of 'country' first
+            cands = [(v, f.s, f) for v, f in facts if self._isa(f.s, [c])
+                     and self._within(f.s, region)]
+            if len(cands) >= 2:
+                cats = [c]
+                break
+        if len(cands) < 2:
+            return None
+        _, x, f = pick(cands, key=lambda c: c[0])
+        self._record(Answer(f.truth, [f], "comparison"))
+        where = f" in {kb.ref(region[0])}" if region else ""
+        most = "largest" if pick is max else "smallest"
+        return (f"{self._cap(kb.ref(x))}. It {kb._parts(f)[1]}, the {most} of the {len(cands)} "
+                f"{kb.name(cats[0], True)}{where} I know.")
+
+    _SAME = {"largest": "largest|biggest", "biggest": "largest|biggest", "tallest": "tallest|highest",
+             "highest": "highest|tallest", "greatest": "greatest|largest"}
+    _HEADS = {"mountain": "mountain|peak|mountain peak", "peak": "peak|mountain"}
+    _ORDINAL = r"\d+(?:st|nd|rd|th)|second|third|fourth|fifth|sixth"
+
+    def _superlative_gloss(self, adj, word, cats, region):
+        """The dictionary's own superlatives: 'the world's longest river'
+        beats 'the longest river in England' (unless England was asked), and
+        'the 2nd largest ocean' is not the largest."""
+        kb = self.kb
+        adjs = self._SAME.get(adj, adj)
+        heads = self._HEADS.get(word, re.escape(word))
+        heads = f"(?:{heads})(?:e?s)?"
+        rx = re.compile(rf"\b(?:the )?(?P<w>world's |earth's )?(?P<n>(?:{self._ORDINAL}) )?"
+                        rf"(?:{adjs}) (?P<mod>[a-z-]+ )?{heads}\b(?P<rest>[^;]*)", re.I)
+        quick = adjs.split("|")
+        places = {kb.word(r).lower() for r in region} | \
+            {kb.display[r].lower() for r in region if r in kb.display}
+        best = None
+        for k, d in kb.definitions.items():
+            if not any(a in d for a in quick):
+                continue
+            for clause in d.split(";"):
+                m = rx.search(clause)
+                if m is None or m["n"]:
+                    continue
+                pre = clause[:m.start()].strip().lower()
+                if pre and not re.search(r"(?:^|\b)(?:is|was|and|also|now|it)$|,$", pre):
+                    continue        # 'this range contains the world's highest mountain'
+                rest = m["rest"].strip().lower()
+                world = bool(m["w"]) or re.match(
+                    r"(?:\w+ )?(?:in|on|of) (?:the )?(?:world|earth|globe)\b", rest) is not None
+                place = None if world else re.match(r"(?:\w+ )?(?:in|of|on) (?:the )?"
+                                                    r"([a-z][a-z .'-]*)", rest)
+                if place is not None:
+                    if not any(place.group(1).startswith(p) for p in places):
+                        continue    # 'the longest river in England'
+                    score = 3
+                else:
+                    score = 3 if world and not region else 2
+                if m["mod"]:
+                    score -= 1          # 'largest freshwater lake' is weaker than 'largest lake'
+                key = (score, self._isa(k, cats), kb.freq.get(k, 0))
+                if best is None or key > best[0]:
+                    best = (key, k, clause.strip())
+        if best is None:
+            return None
+        _, k, clause = best
+        self._record(Answer(Truth(1.0, 0.8), [Fact(k, "defined_as", clause, Truth(1.0, 0.8))],
+                            "definition"))
+        return f"{self._cap(kb.ref(k))}: {clause}."
+
+    def _q_superlative(self, q):
+        """'What is the largest country (in Africa)?': by the numbers where the
+        data has them; 'What is the longest river?': from the dictionary."""
+        cats = self._senses_of(q.s)
+        region = self._senses_of(q.o) if q.o else []
+        if q.r in self._EXTREME:
+            got = self._extreme(cats, region, self._EXTREME[q.r])
+            if got:
+                return got
+        return self._superlative_gloss(q.r, q.s, cats, region) or "I don't know."
+
+    def _listed(self, c):
+        """The members of a kind that a list names -- the pack, the user, the
+        world data: seven continents, not WordNet's Pangaea and Laurasia too;
+        the 195 countries, not Prussia."""
+        kb = self.kb
+        return {f.s for f in kb.inn(c, "isa") if f.truth.f >= 0.5 and f.source != "wordnet"
+                and kb.is_proper(f.s)}
+
+    def _members(self, cats):
+        for c in cats:
+            listed = sorted(self._listed(c))
+            if listed:
+                return c, listed
+        return None, []
+
+    def _q_count(self, q):
+        """'How many continents are there?', 'How many countries border Germany?'"""
+        kb = self.kb
+        cats = self._senses_of(q.s)
+        place = kb.word(self._c(q.o)) if q.o is not None else None
+        defined = [c for c in cats if place and re.search(rf"\b{re.escape(place)}\b",
+                                                           kb.definitions.get(c, ""))]
+        if defined and self._members(defined)[1]:
+            q.o = None              # 'planets: bodies in the solar system that ...': all of them
+        if q.o is not None:
+            found, related = [], set()
+            for o in self._senses_of(q.o):
+                related = self._related(o, q.r)
+                if related:
+                    q.o = o
+                    break
+            for c in cats:              # the usual sense of 'country' first, not 'area'
+                listed = self._listed(c)
+                found = sorted(x for x in related if kb.is_proper(x) and (
+                    x in listed if listed else self._isa(x, [c])))
+                if found:
+                    break
+            if not found:
+                return "I don't know."
+            facts = [kb.get(x, q.r, q.o) or kb.get(q.o, q.r, x) for x in found]
+            if any(facts):
+                self._record(Answer(Truth(1.0, 0.9), [f for f in facts if f][:3]))
+        else:
+            c, found = self._members(defined or cats)
+            if not found:
+                return "I don't know how many there are."
+            self._record(Answer(Truth(1.0, 0.9), [kb.get(found[0], "isa", c)]))
+        n = len(found)
+        num = self._cap(str(L.NUMBER_WORDS.get(n, n)))
+        if n > 12:
+            return f"{num}, among them {self._names(found, 8)}."
+        return f"{num}: {self._names(found, 12)}."
+
+    def _related(self, o, r):
+        """Everything that stands in r to o: what borders it (either way
+        round), or what is in it, at any depth (a country in Northern Africa
+        is in Africa)."""
+        kb = self.kb
+        if r != "in":
+            return {f.s for f in kb.inn(o, r) if f.truth.f >= 0.5} | \
+                {f.o for f in kb.out(o, r) if f.truth.f >= 0.5 and r == "border"}
+        seen, frontier = set(), [o]
+        while frontier and len(seen) < 50000:
+            nxt = []
+            for x in frontier:
+                for f in kb.inn(x, "in"):
+                    if f.truth.f >= 0.5 and f.s not in seen:
+                        seen.add(f.s)
+                        nxt.append(f.s)
+            frontier = nxt
+        return seen
+
+    _TITLES = {"president", "king", "queen", "sir", "saint", "st.", "lord", "general", "pope",
+               "emperor", "czar", "tsar", "prince", "princess", "dr.", "mr.", "mrs.", "da", "de"}
+
+    def _full_name(self, k):
+        """'Alexander Graham Bell', not just 'Bell'."""
+        name = self.kb.display.get(k) or self.kb.word(k)
+        best = name
+        for w in self.kb.words.get(k, []):
+            parts = w.split()
+            if name in parts and parts[0].lower() not in self._TITLES and \
+                    len(parts) > len(best.split()):
+                best = w
+        return best
+
+    def _person(self, k):
+        return self._isa(k, ["person"])
+
+    def _person_named(self, name):
+        """The person a name in a definition refers to ('William Shakespeare')."""
+        for n in (name, name.split()[-1]):
+            k = self.kb.canon(n.lower(), proper=True)
+            for x in [k] + self.kb.other_senses(n.lower(), k):
+                if x in self.kb.display and self._person(x):
+                    return x
+        return None
+
+    _IRREGULAR = {"wrote": r"wrote|writ|author", "built": r"built|build", "led": r"led|lead",
+                  "first climbed": r"climb", "killed": r"kill|murder|slew",
+                  "assassinated": r"assassin"}
+    _WORKS = {"wrote": r"tragedy|comedy|play|novel|poem|book|story|novella|epic|essay",
+              "painted": r"painting|portrait|fresco|mural",
+              "composed": r"opera|symphony|concerto|oratorio|ballet|song|requiem",
+              "sculpted": r"sculpture|statue"}
+
+    def _cue(self, verb):
+        if verb in self._IRREGULAR:
+            return self._IRREGULAR[verb]
+        stem = verb[:-3] if verb.endswith("ied") else verb[:-2] if verb.endswith("ed") else verb
+        return re.escape(stem)
+
+    def _q_who_did(self, q):
+        """'Who discovered penicillin?', 'Who invented the telephone?', 'Who
+        wrote Hamlet?': a fact if there is one (oxygen was discovered by
+        Scheele), else the dictionary, which says who did what in its
+        definitions of people ('bacteriologist who discovered penicillin')
+        and of things ('the hero of William Shakespeare's tragedy')."""
+        kb = self.kb
+        obj = re.sub(r"^(?:the|a|an) ", "", q.o.strip())
+        if q.r == "discovered":
+            for k in self._senses_of(obj):
+                f = next(iter(kb.out(k, "discovered_by")), None)
+                if f is not None:
+                    self._record(Answer(f.truth, [f]))
+                    return f"{f.o}: {kb.say(f)}."
+        cue = re.compile(rf"\b(?:{self._cue(q.r)})", re.I)
+        names = [obj] + [w.lower() for k in self._senses_of(obj)[:3]
+                         for w in [kb.word(k)] + kb.words.get(k, [])]
+        names = [n for n in dict.fromkeys(names) if len(n) > 2]
+        orx = re.compile(r"\b(?:" + "|".join(r"[\s-]+".join(map(re.escape, n.split()))
+                                             for n in names) + r")\b", re.I)
+        firsts = {n.split()[0] for n in names}
+        best = None
+        for k, d in kb.definitions.items():
+            if k not in kb.display:
+                continue
+            low = d.lower()
+            if not any(w in low for w in firsts):
+                continue
+            # the thing itself, not part of a longer name ('America' in 'North America')
+            m = next((x for x in orx.finditer(d) if not re.search(r"[A-Z][\w'-]* $", d[:x.start()])
+                      and not re.match(r" [A-Z]", d[x.end():])), None)
+            if m is None:
+                continue
+            cues = [c for c in cue.finditer(d) if c.start() < m.start()
+                    and len(d[c.end():m.start()].split()) <= 6
+                    and " by " not in d[c.end():m.start()]
+                    and not re.search(r"\b(?:been|was|were|is|are)\s*$", d[:c.start()])]
+            if not cues and not cue.search(d):
+                continue
+            score = (2 if cues else 1, kb.freq.get(k, 0))
+            if (best is None or score > best[0]) and self._person(k):
+                best = (score, k)
+        if best is None or best[0][0] < 2:
+            works = self._WORKS.get(q.r, "|".join(self._WORKS.values()))
+            name = r"([A-Z][a-z]+(?: (?:[A-Z][a-z.]+|da|de|van|von))*)"
+            for k in self._senses_of(obj):
+                d = kb.definitions.get(k, "")
+                m = re.search(name + rf"'s (?:\w+ )?(?:{works})\b", d) or \
+                    re.search(rf"\b(?:{works})(?:e?s)? by " + name, d)
+                p = self._person_named(m.group(1)) if m else None
+                if p is not None:
+                    self._record(Answer(Truth(1.0, 0.6), [Fact(k, "defined_as", d,
+                                                               Truth(1.0, 0.6))], "definition"))
+                    return (f"{self._full_name(p)}, I think: {kb.ref(k)} is "
+                            f"{self._gloss(k, 120)}.")
+        if best is None or best[0][0] < 2:     # 'gravitational attraction ... and discovered
+            return "I don't know."             # the cellular structure of cork' is not it
+        k = best[1]
+        self._record(Answer(Truth(1.0, 0.8), [Fact(k, "defined_as", kb.definitions[k],
+                                                   Truth(1.0, 0.8))], "definition"))
+        return f"{self._full_name(k)}: {kb.definitions[k]}."
+
+    _NTH = {1: "1st", 2: "2nd", 3: "3rd"}
+
+    def _q_who_title(self, q):
+        """'Who was the first president of the United States?'"""
+        kb = self.kb
+        n, title = q.extra
+        num = L._ORDINALS.get(n) if n in L._ORDINALS else int(re.match(r"\d+", n).group())
+        forms = {n}
+        if num:
+            forms |= {self._NTH.get(num, f"{num}th")} | {w for w, i in L._ORDINALS.items()
+                                                         if i == num}
+        # the head noun, then the rest of the title with a few words allowed between
+        # ('the first man to set foot on the Moon', 'first president of independent Kenya')
+        head, _, rest = title.partition(" ")
+        rx = rf"\b(?:{'|'.join(map(re.escape, forms))}) {re.escape(head)}\b"
+        if rest:
+            words = [w for w in rest.split() if w != "the"]
+            rx += r"(?:\s+\S+){0,4}?" + "".join(rf"\s+(?:the\s+)?(?:[a-z]+\s+)?{re.escape(w)}"
+                                             if i == len(words) - 1 and len(words) > 1
+                                             else rf"\s+(?:the\s+)?{re.escape(w)}"
+                                             for i, w in enumerate(words)) + r"\b"
+        rx = re.compile(rx, re.I)
+        hits = [(m.start(), -kb.freq.get(k, 0), k) for k, d in kb.definitions.items()
+                if k in kb.display and (m := rx.search(d)) is not None]
+        for _, _, k in sorted(hits):
+            if self._person(k):
+                self._record(Answer(Truth(1.0, 0.8), [Fact(k, "defined_as", kb.definitions[k],
+                                                           Truth(1.0, 0.8))], "definition"))
+                return f"{self._full_name(k)}: {kb.definitions[k]}."
+        return "I don't know."
 
     def _q_where(self, q):
         if self.world.knows(q.s) and (self._dynamic(q.s) or not self.kb.out(q.s, "in")):

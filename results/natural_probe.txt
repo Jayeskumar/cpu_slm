@@ -4,3 +4,5 @@
 natural    73/73 correct (100%), median 0.2 ms
   MISS What money do they use in the United Kingdom? -> "I don't know." (want pound)
 natural 2  55/56 correct (98%), median 0.2 ms
+# after the generalist work (RESEARCH.md §15) the country data also answers the UK's money:
+natural    73/73, natural 2 56/56

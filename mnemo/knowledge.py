@@ -89,7 +89,10 @@ for a, b in [("bigger_than", "smaller_than"), ("taller_than", "shorter_than"),
     INVERSE[a], INVERSE[b] = b, a
 INVERSE["near"] = "near"
 INVERSE["opposite"] = "opposite"
-NOT_INHERITED = TRANSITIVE | {"near", "on", "parent_of", "child_of", "opposite"}
+NOT_INHERITED = TRANSITIVE | {"near", "on", "parent_of", "child_of", "opposite"} | {
+    # facts about one thing, not its kind: France's area is not every country's
+    "area", "symbol", "atomic_number", "born", "died", "began", "ended", "nationality",
+    "from", "born_in", "border", "discovered_by", "defined_as", "year"}
 ASYMMETRIC = (TRANSITIVE - {"isa", "in", "part_of"}) | {"parent_of", "child_of"}
 
 
@@ -147,7 +150,7 @@ class Knowledge:
         self.stuff = set()      # substances and foods: a bare 'Chocolate is ...' is not a name
         self.taxa = set()       # animal and plant classes (disjoint siblings)
         self.freq = {}          # concept -> how often its sense occurs in text (SemCor)
-        self.authority = {"wordnet", "pack", "innate"}  # curated sources
+        self.authority = {"wordnet", "pack", "innate", "world"}  # curated sources
         self.loaded = set()     # bulk sources already fed ('wordnet', 'pack:general')
 
     def canon(self, x, proper=False):
@@ -160,6 +163,8 @@ class Knowledge:
         if proper:
             if x in self.proper:
                 return self.proper[x]
+            if self.aliases.get(x) in self.display:
+                return self.aliases[x]       # 'Mount Everest' is Everest, 'First World War' WWI
             if (x in self.definitions or x in self.aliases) and x not in self.display:
                 return x + "#0"      # a name, not the dictionary word it spells
         return self.aliases.get(x, x)
@@ -379,7 +384,10 @@ class Knowledge:
                 self.curated(s) or any(self.curated(f.o) for f in self.out(s, "isa"))):
             return NONE       # closed world only where the taxonomy is curated
         up_o = {o: (0, [])}
-        for m, a in self.categories_of(o, depth=2):
+        # the shared parent must be near o: two links up, or three for animal and
+        # plant classes, whose siblings really are disjoint (koalas are marsupials,
+        # bears placentals)
+        for m, a in self.categories_of(o, depth=3 if o in self.taxa else 2):
             up_o[m] = (a.dist, a.premises)
         if len(up_o) == 1 or s in up_o:
             return NONE
@@ -573,12 +581,38 @@ class Knowledge:
         return self.generic(x) and not self._is_mass(x)
 
     def ref(self, x):
-        """A definite reference: 'Paris', 'the kitchen'."""
+        """A definite reference: 'Paris', 'the kitchen', 'the Nile'."""
         if x == "user":
             return "you"
         if x == "mnemo":
             return "me"
-        return self.display[x] if x in self.display else "the " + self.word(x)
+        if x not in self.display:
+            if x.startswith("user's "):             # 'my grandfather', said back
+                return "your " + self.word(x)[7:]
+            return "the " + self.word(x)
+        name = self.display[x]
+        return "the " + name if self._takes_the(x, name) else name
+
+    # names said with 'the': the Pacific Ocean, the United States, the Battle of Hastings
+    _THE_HEADS = {"ocean", "sea", "river", "revolution", "empire", "republic", "kingdom",
+                  "states", "union", "emirates", "desert", "canal", "gulf", "channel", "war",
+                  "islands", "isles", "mountains", "dynasty", "reformation", "renaissance"}
+    _THE_OF = {"battle", "bay", "gulf", "isle", "cape", "statue", "sea", "strait", "straits",
+               "kingdom", "republic", "duke", "university", "treaty", "siege"}
+    _THE_NAMES = {"netherlands", "philippines", "bahamas", "maldives", "seychelles", "gambia",
+                  "alps", "andes", "himalayas", "rockies", "balkans", "caribbean", "sahara",
+                  "arctic", "antarctic", "hague", "renaissance", "reformation", "holocaust"}
+    _THE_KINDS = {"river", "ocean", "sea", "desert"}
+
+    def _takes_the(self, x, name):
+        words = name.lower().split()
+        if not words or words[0] == "the":
+            return False
+        if name.lower() in self._THE_NAMES:
+            return True
+        if len(words) > 1:
+            return words[-1] in self._THE_HEADS or (words[1] == "of" and words[0] in self._THE_OF)
+        return any(f.o in self._THE_KINDS and f.truth.f >= 0.5 for f in self.out(x, "isa"))
 
     def article(self, x):
         if x in self.display:
@@ -660,6 +694,40 @@ class Knowledge:
             return subj, f"{be} {neg}made of {self.name(o)}"
         if r == "opposite":
             return None, f"{self.word(o)} is the opposite of {self.word(f.s)}"
+        # facts about the world read from data and definitions
+        was = "were" if gen else "was"
+        if r in ("born", "died", "began", "ended"):
+            verb = {"born": f"{was} born", "died": "died", "began": "began", "ended": "ended"}[r]
+            return subj, f"{verb} in {o}" if pos else f"did not {r} in {o}"
+        if r == "year":
+            return subj, f"took place in {o}"
+        if r == "born_in":
+            return subj, f"{was} born in {self.ref(o)}"
+        # the dead were from somewhere; the living are
+        now = "were" if gen else "was" if self.out(f.s, "died") else "are" if gen else "is"
+        if r == "from":
+            return subj, f"{now} from {self.ref(o)}"
+        if r == "nationality":
+            return subj, f"{now} {o}"
+        if r == "border":
+            return subj, f"{'border' if gen else 'borders'} {self.ref(o)}" if pos else \
+                f"{do} not border {self.ref(o)}"
+        if r == "area":
+            n = float(o)
+            size = f"{int(n):,}" if n >= 1 else f"{n:g}"
+            return subj, f"{'have' if gen else 'has'} an area of {size} square kilometres"
+        if r == "symbol":
+            return None, f"the chemical symbol of {self.word(f.s)} is {o}"
+        if r == "atomic_number":
+            return None, f"the atomic number of {self.word(f.s)} is {o}"
+        if r == "discovered_by":
+            return subj, f"{was} discovered by {o}"
+        if r == "used_for":
+            return subj, f"{be} used {o}"
+        if r == "defined_as":
+            return None, f"my dictionary describes {self.ref(f.s)} as {o}"
+        if r == "demonym_of":
+            return None, f"people from {self.ref(o)} are called {self.display.get(f.s, f.s)}"
         if r.endswith("_of"):
             return subj, f"{be} {neg}the {r[:-3]} of {self.name(o)}"
         verb = r if gen else third_person(r)
@@ -746,7 +814,7 @@ class Knowledge:
                 lead = (self._chain(a.premises, short=True) if brief
                         else self._render(a.premises)) + "; "
             kinds = " and ".join(self.display.get(x) or
-                                 (self.word(x) if self.bare(x) in self._MASS else plural(self.word(x)))
+                                 (self.word(x) if self._is_mass(x) else plural(self.word(x)))
                                  for x in (branch, o))
             return self._cap_first(f"{lead}{kinds} are different kinds of {self.name(p)}") + "."
         if a.how == "elsewhere" and a.stmt:

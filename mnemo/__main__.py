@@ -68,6 +68,19 @@ def cmd_feed(a):
               f"{st['definitions']} definitions ({time.time() - t0:.0f} s)")
     elif a.wordnet:
         print(f"(no WordNet at {a.wordnet}; run scripts/get_data.sh to fetch it)")
+    world = a.world and os.path.isdir(a.world)
+    if world and "world" not in loaded:
+        t1 = time.time()
+        cpath, citpath, epath = (os.path.join(a.world, f) for f in
+                                 ("countries.json", "world-cities.csv", "elements.json"))
+        if os.path.exists(cpath):
+            n, names, _ = feed.load_countries(m, cpath)
+            nc = feed.load_cities(m, citpath, names) if os.path.exists(citpath) else 0
+            print(f"world: {n} countries, {nc} cities", end="")
+        if os.path.exists(epath):
+            print(f", {feed.load_elements(m, epath)} chemical elements", end="")
+        print(f" ({time.time() - t1:.0f} s)")
+        loaded.add("world")
     for name in a.pack or []:
         if "pack:" + name in loaded:
             print(f"pack {name}: already in this brain")
@@ -211,6 +224,8 @@ def main(argv=None):
                    help="WordNet 3.0 directory (default data/nltk/wordnet)")
     f.add_argument("--no-wordnet", dest="wordnet", action="store_const", const=None)
     f.add_argument("--names", default="data/nltk/names", help="first-name lists")
+    f.add_argument("--world", default="data/world",
+                   help="countries, cities and elements (scripts/get_data.sh)")
     f.add_argument("--pack", nargs="*", default=["general"], help="knowledge packs (knowledge/*.txt)")
     f.add_argument("--source", default="file", help="source label for the files' facts")
     f.add_argument("--conf", type=float, default=0.9, help="confidence of the files' facts")

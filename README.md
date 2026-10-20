@@ -16,9 +16,9 @@ what weight-based learning adds.
   trained on the CPU in numpy, scores 79.4 on Penn Treebank. Mixed with
   Mnemo's counts it reaches **69.5**. That beats a 66M-parameter GPU LSTM
   (78.4).
-* It **can be fed general knowledge.** WordNet (82k concepts) and a curated
-  pack of about 870 facts load in 6 s into a 23 MB brain (about 200 MB of RAM
-  once loaded). It scored 89% on held-out general-knowledge questions the
+* It **can be fed general knowledge.** WordNet (82k concepts), a curated pack
+  of about 870 facts and three open datasets load in 10 s into a 34 MB brain
+  (about 320 MB of RAM once loaded). It scored 89% on held-out general-knowledge questions the
   first time they were asked. After fixing what they exposed, it scored 100%
   on a second held-out set, asked once. Each answer takes about 0.2 ms and
   comes with an explanation:
@@ -30,6 +30,18 @@ what weight-based learning adds.
   or a vegetable?"), "why" questions and exact sums. Typed naturally, a fresh
   set of questions scores 98% on its first run, up from 33% before this
   work. You can chat with it in the browser.
+* It is **a generalist** about the world. It reads WordNet's definitions into
+  facts:
+  * people's years and nationalities;
+  * the dates of events;
+  * what tools are for;
+  * what animals eat and where they live.
+
+  It also imports open data on 250 countries, 32k cities and 119 chemical
+  elements. Ask "Who invented the telephone?", "What is the largest country in
+  Africa?", "When did World War II end?" or "How many countries border
+  Germany?". On a 68-question generalist probe it went from 13 to 67 correct.
+  Fresh sets written afterwards scored 76% and then 85% on their first runs.
 * On Tiny Shakespeare it scores 2.04 bits per character with learning frozen
   (1.85 online) after 7 s of CPU training. nanoGPT's 10.65M-parameter GPU
   transformer scores 2.12.
@@ -58,19 +70,20 @@ The full survey, design rationale, measurements and limitations are in
 make                       # builds build/mnemo (CLI) and build/libmnemo.so (C99, no deps)
 python3 -m mnemo demo      # reasoning tour; needs only numpy
 python3 -m mnemo chat      # talk to it: teach facts, tell stories, ask questions
-python3 tests/run_tests.py # 41 unit tests (also runnable with pytest)
+python3 tests/run_tests.py # 49 unit tests (also runnable with pytest)
 python3 tests/story_tasks.py 200   # bAbI-style story suite
 ```
 
 To give it general knowledge (WordNet and the bundled pack):
 
 ```bash
-scripts/get_data.sh                               # corpora, plus WordNet 3.0 and name lists
-python3 -m mnemo feed --brain models/kbrain       # ~6 s, 108k facts, 23 MB
+scripts/get_data.sh                               # corpora, WordNet 3.0, names, world data
+python3 -m mnemo feed --brain models/kbrain       # ~10 s, 200k facts, 34 MB
 python3 -m mnemo chat --brain models/kbrain
 python3 -m mnemo serve                            # the same in the browser: http://127.0.0.1:8765/
 python3 tests/knowledge_probe.py models/kbrain    # 159 general-knowledge questions
 python3 tests/natural_probe.py models/kbrain      # 129 questions typed the way people type
+python3 tests/general_probe.py models/kbrain      # 182 questions about the wider world
 ```
 
 To give it language and word meanings, let it read:
@@ -117,8 +130,10 @@ source, and keeps the source and confidence of every fact.
 * **WordNet 3.0**, from the NLTK data mirror:
   * 82,115 concepts with their definitions;
   * 84,427 is-a links;
-  * 18,991 part, substance and place links;
-  * opposites, plus capitals and currencies read from the definitions.
+  * 25,104 part, substance and place links;
+  * opposites, plus capitals, currencies, people's lives, dates, uses and
+    diets read from the definitions (see "A generalist" below).
+* **Open world data:** countries, cities and chemical elements.
 * **`knowledge/general.txt`**, about 870 facts in plain English:
   * animals with their defaults and exceptions;
   * plants, the body, matter and astronomy;
@@ -169,7 +184,7 @@ mnemo> No. Kiri is a kiwi, and kiwis cannot fly.
 
 One caveat: these questions are in the phrasing the reader understands, about
 what WordNet and the pack cover. The story tasks still score 100% with all
-108k facts loaded underneath.
+200k facts loaded underneath.
 
 ## Asking it naturally, in the browser
 
@@ -216,6 +231,86 @@ of tree.
 | 73 questions, before this work (baseline) | 24/73 (33%) |
 | the same 73 after it (now development data) | 73/73 |
 | 56 fresh questions, written afterwards, run once | **55/56 (98%)** |
+
+## A generalist: the wider world
+
+WordNet's 82k definitions say far more than its links do. A small reader in
+`mnemo/feed.py` turns their regular shapes into facts:
+
+| A definition says | Fact |
+|---|---|
+| "English poet and dramatist (1564-1616)" | born 1564, died 1616, English, from the United Kingdom |
+| "a war ... from 1939 to 1945"; "the decisive battle ... (1066)" | began / ended, or took place |
+| "a hand tool used to deliver an impulsive force by striking" | what a hammer is used for |
+| "Australian arboreal marsupial; feeds on eucalyptus leaves" | where koalas live, what they eat |
+
+The reader produces:
+* 3,059 birth years and 2,652 nationalities;
+* 257 event dates;
+* 2,339 purposes.
+
+Three small open datasets, fetched by `scripts/get_data.sh` and kept out of the
+repository, add numbers the dictionary lacks:
+* [mledoze/countries](https://github.com/mledoze/countries) (ODbL): borders,
+  areas, landlocked or not, regions, languages, currencies and demonyms. 195
+  of its 250 entries are independent countries; the rest are dependencies.
+* [datasets/world-cities](https://github.com/datasets/world-cities) (GeoNames,
+  CC BY 3.0): 32k cities in their regions.
+* [Periodic-Table-JSON](https://github.com/Bowserinator/Periodic-Table-JSON)
+  (CC BY-SA 3.0): symbols, atomic numbers, phases, kinds and discoverers.
+
+Most of the work was matching names to the dictionary's concepts. Pitfalls
+that had to be handled:
+* a town called Asia in the Philippines must not put the continent there;
+* Madrid, Colombia is not the dictionary's Madrid;
+* the president is not Lincoln, Nebraska.
+
+```text
+you> Who invented the telephone?
+mnemo> Alexander Graham Bell: United States inventor (born in Scotland) of the telephone (1847-1922).
+you> Who was born first, Newton or Einstein?
+mnemo> Newton. Newton was born in 1642, and Einstein was born in 1879.
+you> What is the largest country in Africa?
+mnemo> Algeria. It has an area of 2,381,741 square kilometres, the largest of the 54 countries in Africa I know.
+you> What is the longest river?
+mnemo> The Nile: the world's longest river (4150 miles).
+you> How many countries border Germany?
+mnemo> Nine: Austria, Belgium, Czechia, Denmark, France, Luxembourg, Netherlands, Poland and Switzerland.
+you> Does Spain border Germany?
+mnemo> No. Spain borders Andorra, France, Gibraltar, Morocco and Portugal.
+you> When was the Battle of Hastings?
+mnemo> The Battle of Hastings took place in 1066.
+you> Which element has atomic number 8?
+mnemo> Oxygen: the atomic number of oxygen is 8.
+you> Who wrote Hamlet?
+mnemo> William Shakespeare, I think: Hamlet is the hero of William Shakespeare's tragedy who hoped to avenge the murder of his father.
+you> Who painted the Mona Lisa?
+mnemo> I don't know.
+```
+
+The last answer is honest: the dictionary never mentions the Mona Lisa.
+
+| Generalist probe (`tests/general_probe.py`) | Correct |
+|---|---|
+| 68 questions, before this work (baseline) | 13/68 (19%) |
+| the same 68 after it (now development data) | 67/68 |
+| 68 fresh questions, written afterwards, run once | **52/68 (76%)** |
+| 46 more, written after fixing what those exposed, run once | **39/46 (85%)** |
+
+About half of the fresh misses were knowledge the dictionary does not have:
+* who invented the telescope;
+* who wrote *Romeo and Juliet*;
+* where lemurs live.
+
+The other half were general bugs, since fixed and covered by tests. One was
+the "I" of "World War I", which was read as the speaker. Another was the
+"He" of "the symbol He". Everything else is unchanged:
+* the knowledge probe still scores 159/159;
+* the natural-phrasing probes score 73/73 and 56/56;
+* the story tasks still score 100%, with or without the brain.
+
+Most answers take about 0.3 ms. Searches across all definitions take 20 to
+80 ms. RESEARCH.md §15 has the details.
 
 ## Weights: a small LSTM next to the counts
 
@@ -264,7 +359,7 @@ the system 200× larger, and a transformer's knowledge cannot be lifted out in
 pieces.
 
 **What it is better at, by design and measurably:**
-* **Size.** A 23 MB knowledge brain and a 138 MB language cortex.
+* **Size.** A 34 MB knowledge brain and a 138 MB language cortex.
 * **Cost per answer.** About 0.2 ms on one core, against about 5 GFLOPs per
   generated token for a 2.5B-parameter model.
 * **One-shot learning.** Tell it a fact once and it is used and saved at once.
@@ -331,7 +426,7 @@ RESEARCH.md §13 has the full comparison table.
 | `mnemo/semantic.py` | PPMI + randomized SVD; spherical k-means concepts | semantic memory (LSA) |
 | `mnemo/hdc.py` | bind, bundle, permute, cleanup in 2048-D bipolar space | distributed, compositional codes |
 | `mnemo/knowledge.py` | NARS truth values and inference; ACT-R base-level activation; closed world over curated taxonomies | declarative memory |
-| `mnemo/feed.py` | WordNet, knowledge packs, fact files; one concept per word sense | schooling: learning from a dictionary and a textbook |
+| `mnemo/feed.py` | WordNet, knowledge packs, fact files; one concept per word sense; definitions read into facts; country, city and element data | schooling: learning from a dictionary, a textbook and an atlas |
 | `mnemo/world.py` | ordered event memory; learned motive associations | episodic memory |
 | `mnemo/language.py` | pattern parser; 4-slot working memory | language comprehension |
 | `mnemo/neural.py` | 2-layer LSTM in numpy, mixed with the counts (optional) | slow, generalising cortical learning |
@@ -390,7 +485,8 @@ mnemo/          Python mind: cortex wrapper, language, knowledge, world, semanti
                 feed (WordNet / packs / fact files), neural (numpy LSTM), rephrase (how people
                 ask, sums), serve (local chat page)
 knowledge/      general.txt, the curated knowledge pack
-tests/          unit tests, bAbI-style story suite, general-knowledge and natural-phrasing probes
+tests/          unit tests, bAbI-style story suite, general-knowledge, natural-phrasing and
+                generalist probes
 docs/           screenshots
 tools/          kn_reference.py (exact KN5), train_lstm.py, hybrid_eval.py, teacher_pack.py
 scripts/        get_data.sh, benchmark.sh
@@ -406,7 +502,9 @@ These are stated plainly here, and in more detail in RESEARCH.md:
   English, widened by rephrasing rules for common ways of asking. Its
   inference rules are designed by hand, not learned. Phrasings outside the
   rules still get "I don't understand that yet".
-* **Knowledge.** It knows only what it has been told, has read, or was fed
-  (WordNet and the pack): no events, dates or numbers beyond those.
+* **Knowledge.** It knows only what it has been told, has read, or was fed:
+  WordNet 3.0 (2006), the pack, and the country, city and element data. It
+  has no populations, no current events, no works of art and no sport. The
+  definition reader is pattern-based, so a few of its facts are wrong.
 * **Story-task scores.** These come from a self-generated suite in bAbI style.
   The official bAbI files were not reachable from this environment.

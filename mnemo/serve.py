@@ -48,8 +48,9 @@ font:inherit;cursor:pointer}
 <form id="f" autocomplete="off"><input id="q" placeholder="Teach me, tell me a story, or ask"
  aria-label="Message"><button>Send</button></form>
 <script>
-const ex=["Is a whale a fish?","Which animals can fly?","What kind of animal is a frog?",
-"Name some planets.","Is Tokyo in Europe?","What is the difference between a bat and a bird?",
+const ex=["Is a whale a fish?","Which animals can fly?","Who invented the telephone?",
+"What is the largest country in Africa?","When did World War II end?","Is Tokyo in Europe?",
+"What kind of animal is a frog?","What is the difference between a bat and a bird?",
 "Kiri is a kiwi. Can Kiri fly?","Mary went to the kitchen. Where is Mary?","What is 12 times 7?"];
 const log=document.getElementById("log"),q=document.getElementById("q");
 function add(who,text,meta){const d=document.createElement("div");d.className="msg "+who;

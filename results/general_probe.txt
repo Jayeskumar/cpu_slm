@@ -1,0 +1,46 @@
+# python3 tests/general_probe.py models/kbrain -v
+# GENERAL (68): written before the generalist work. Baseline 13/68 (19%), see
+#   results/general_probe_baseline.txt; development data afterwards.
+# GENERAL_2 (68): written after that work. First and only run, before any further fix:
+  MISS Was Darwin English? -> "I don't know." (want yes)
+  MISS Who invented the telescope? -> "I don't know." (want lippershey|lipperhey|galileo)
+  MISS Who discovered gravity? -> "Robert Hooke: English scientist who formulated the law of elasticity and proposed a wave theory of light and formulated a theory of planetary motion and proposed the inverse square law of gravitational attraction and discovered the cellular structure of cork and introduced the term `cell' into biology and invented a balance spring for watches (1635-1703)." (want newton)
+  MISS Who painted the Sistine Chapel? -> "I don't know." (want michelangelo)
+  MISS Who wrote Romeo and Juliet? -> "I don't know." (want shakespeare)
+  MISS Who was the first man on the moon? -> "I don't know." (want armstrong)
+  MISS Does Spain border Germany? -> "I don't know." (want no)
+  MISS What is a thermostat used for? -> "I don't know." (want temperature)
+  MISS What is a microscope used for? -> "I don't know." (want magnify|magnifying|magnified|enlarge|enlarged|small|tiny|view|viewing|examine|examining)
+  MISS Where do lemurs live? -> "I don't know." (want madagascar)
+  MISS When did World War I end? -> "I don't know." (want 1918)
+  MISS When was the Russian Revolution? -> "I don't know." (want 1917)
+  MISS When was the Battle of Hastings? -> "I don't know." (want 1066)
+  MISS How many planets are there in the solar system? -> "I don't know." (want eight|8)
+  MISS What is the largest lake? -> "I don't know." (want caspian|superior)
+  MISS What is the biggest animal? -> "I don't know." (want blue whale|whale)
+general 2  52/68 correct (76%), median 0.3 ms
+# GENERAL_3 (46): written after the general fixes GENERAL_2 prompted. First and only run:
+  MISS What nationality was Picasso? -> "I don't know." (want spanish)
+  MISS Who discovered America? -> 'John Cabot: Italian explorer who led the English expedition in 1497 that discovered the mainland of North America and explored the coast from Nova Scotia to Newfoundland (ca. 1450-1498).' (want columbus)
+  MISS Who invented the printing press? -> "I don't know." (want gutenberg)
+  MISS Who was the first emperor of Rome? -> "I don't know." (want augustus)
+  MISS Which element has the symbol He? -> "I don't know." (want helium)
+  MISS When did the Vietnam War end? -> "I don't know." (want 1975)
+  MISS When was the Battle of Waterloo? -> "I don't know." (want 1815)
+general 3  39/46 correct (85%), median 0.3 ms
+# Now, after fixing the general bugs those runs exposed (all three sets are development
+# data; every remaining miss is knowledge the sources do not contain):
+  MISS Who painted the Mona Lisa? -> "I don't know." (want leonardo)
+general    67/68 correct (99%), median 0.3 ms
+  MISS Who invented the telescope? -> "I don't know." (want lippershey|lipperhey|galileo)
+  MISS Who discovered gravity? -> "I don't know." (want newton)
+  MISS Who painted the Sistine Chapel? -> "I don't know." (want michelangelo)
+  MISS Who wrote Romeo and Juliet? -> "I don't know." (want shakespeare)
+  MISS What is a microscope used for? -> "I don't know." (want magnify|magnifying|magnified|enlarge|enlarged|small|tiny|view|viewing|examine|examining)
+  MISS Where do lemurs live? -> "I don't know." (want madagascar)
+  MISS What is the biggest animal? -> "I don't know." (want blue whale|whale)
+general 2  61/68 correct (90%), median 0.3 ms
+  MISS Who discovered America? -> "I don't know." (want columbus)
+  MISS Who invented the printing press? -> "I don't know." (want gutenberg)
+  MISS Who was the first emperor of Rome? -> "I don't know." (want augustus)
+general 3  43/46 correct (93%), median 0.3 ms

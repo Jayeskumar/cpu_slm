@@ -13,8 +13,8 @@ This document has three parts:
   maps onto brain systems, what it measurably does, and what it cannot do.
 * **Part III: knowledge and weights.** Feeding it general knowledge (WordNet,
   a curated pack, your own files), adding a small CPU-trained LSTM, an
-  honest comparison with Gemma 1, and understanding how people actually
-  ask.
+  honest comparison with Gemma 1, understanding how people actually ask, and
+  becoming a generalist (definitions read into facts, open world data).
 
 Figures from the literature carry a source link. Three research agents
 gathered them. Their web fetches were mostly blocked, so many figures come from
@@ -722,7 +722,8 @@ while staying small, and be better than Gemma 1?
   * JSON lines: `{"s": .., "r": .., "o": .., "c": ..}`.
 
 The fed brain has 108,009 facts about 85,150 concepts. It takes 23 MB on disk
-and about 200 MB of RAM once loaded, and takes 5–8 s to build.
+and about 200 MB of RAM once loaded, and takes 5–8 s to build. (§15 later adds facts
+read from the definitions and open world data: 200k facts, 34 MB.)
 
 #### 11.2 Word senses: the hard part
 
@@ -968,7 +969,7 @@ small.
 
 | | Gemma 1 2B | Mnemo (this repository) |
 |---|---|---|
-| Parameters / memory | 2.51B weights (~5 GB) | counts + facts: 23 MB knowledge brain, 138 MB language cortex; optional 9.3M-weight LSTM (19 MB) |
+| Parameters / memory | 2.51B weights (~5 GB) | counts + facts: 34 MB knowledge brain, 138 MB language cortex; optional 9.3M-weight LSTM (19 MB) |
 | Training | 3T tokens, 512 TPUv5e | 5 MB of text; 40 s on one CPU core (cortex), ~3 h on 3 cores (LSTM); 5–8 s to import WordNet |
 | MMLU (5-shot) | 42.3 | not attempted: it cannot read exam questions |
 | HellaSwag / PIQA / ARC-e (0-shot) | 71.4 / 77.3 / 73.2 | not attempted |
@@ -1094,7 +1095,216 @@ principled next step remains roadmap item 2: induce parse patterns from
 (sentence, meaning) pairs. The rephrasing rules and the probes now provide a
 training and test set for exactly that.
 
-### 15. References
+### 15. A generalist: knowing many kinds of thing
+
+The next request was to make Mnemo a generalist that knows many things. The fed
+brain knew WordNet's taxonomy and parts, the pack, and the capitals and
+currencies that definitions name. A generalist probe of 68 questions
+(`tests/general_probe.py`) was written before this work. It covers people,
+geography, science, objects, animals, history, counting and superlatives. It
+scored **13/68 (19%)**.
+
+#### 15.1 Reading the dictionary
+
+WordNet's definitions are short, carefully edited and regular in shape. A
+pattern reader turns those shapes into facts. It is related to Hearst
+patterns and open information extraction, but it works over a single
+well-edited source.
+
+**People** (instances in `noun.person`):
+* life years "(1564-1616)", BC years, "(born in 1934)";
+* a leading nationality adjective ("English poet", "prolific and influential
+  Spanish artist"), mapped to a country;
+* "President of the United States" → from;
+* "born in Scotland" → born in.
+
+This gives 3,059 birth years, 2,785 death years and 2,652 nationalities.
+
+**Events:**
+* spans "from 1939 to 1945", "; 1789-1799", "(1954-1975)";
+* single years for named acts and events: "(1066)", "in November 1917",
+  "on 18 June 1815".
+
+This gives 123 spans and 134 single years.
+
+**Places, artifacts and creatures:**
+* places that have no WordNet location link: "a city in east-central France";
+* artifacts: "used to/for/as …", "an instrument … for cutting", "a regulator
+  for automatically regulating temperature". That gives 2,339 purposes, plus
+  what things are made of;
+* animals and plants: what they feed on, where they live ("Australian
+  marsupial"), and typical properties from a short whitelist (flightless,
+  nocturnal, endangered, …).
+
+The facts carry confidence 0.8. That is below WordNet's own links (0.99) and
+below what the user says. Facts about a single thing (years, areas, symbols,
+borders, nationality) are not inherited: France's area is not every
+country's.
+
+#### 15.2 Open world data
+
+`scripts/get_data.sh` fetches three small open datasets. They are not stored
+in the repository.
+* **mledoze/countries** (ODbL): 250 entries with borders, area, landlocked,
+  region and subregion, capital, languages, currencies and demonyms. Its
+  "independent" flag decides whether an entry is a country (195) or a
+  dependency (Réunion, Greenland).
+* **datasets/world-cities** (GeoNames, CC BY 3.0): 32k cities, placed in their
+  region and country.
+* **Periodic-Table-JSON** (CC BY-SA 3.0): 119 elements with symbol, atomic
+  number, phase, kind, whether each is a metal, and a discoverer where one is
+  named.
+
+Most of the effort went into matching names to the dictionary's concepts:
+* **Name collisions.** A town called Asia in the Philippines had put the
+  continent inside the Philippines, so a city name now attaches only to a new
+  concept or to an existing town. That also keeps Lincoln, Nebraska, away
+  from the president.
+* **Namesakes.** When the dictionary defines a town, the data row's country
+  must appear in the definition. This is a Lesk-style check: the dictionary's
+  Madrid is in Spain, not Colombia.
+* **The dictionary's own sense first.** The town of Darwin is WordNet's
+  provincial capital, not a fresh concept.
+* **Sentinel values.** An area of −1 means unknown.
+* **"the".** Names that take "the" get it: the Nile, the United States, the
+  Battle of Hastings, but not World War II.
+
+The brain grows from 23 MB to 34 MB and about 200k facts. Feeding takes 10 s,
+and loading takes 1.4 s.
+
+#### 15.3 Answering
+
+New question types (`mnemo/language.py`, `mnemo/mind.py`):
+
+**Dates and lives:**
+* when someone was born or died, and when something began, ended or took
+  place;
+* age at death, from the years alone, so "about 35";
+* who was born first;
+* where someone was from or born.
+
+Some facts hold one value at a time: "Was Mozart born in 1800?" → "No. Mozart
+was born in 1756." These can also be taught: "Tom was born in 1930."
+
+**Attributes both ways**, and comparisons by numbers:
+* area, symbol and atomic number: "What element has the symbol Na?";
+* "Which is bigger, France or Spain?" by area;
+* "older" by year of birth.
+
+**Superlatives:**
+* By the numbers where the data has them: the largest country in Africa by
+  area.
+* Otherwise, the dictionary's own superlatives, ranked:
+  * "the world's longest river" beats "the longest river in England", unless
+    England was asked;
+  * "the 2nd longest" is not the longest;
+  * "this range contains the world's highest mountain" is about something
+    else;
+  * a modifier is allowed but ranks lower ("the largest freshwater lake").
+
+**Counting** uses members that a list names: the pack, the user or the world
+data.
+* Seven continents, not WordNet's Pangaea and Laurasia as well.
+* 195 countries, and 54 in Africa.
+* Bordering countries.
+* A region that the kind's own definition names: planets are "bodies in the
+  solar system".
+
+**Who did what:**
+1. A fact, if there is one: oxygen was discovered by Scheele.
+2. Otherwise, people's definitions in which the verb governs the thing:
+   "bacteriologist who discovered penicillin", but not "penicillin, which had
+   been discovered by …". The thing's other names count ("incandescent
+   electric light" for the light bulb). Matches inside a longer name do not
+   ("North America" for America).
+3. Otherwise, the thing's own definition: "the hero of William Shakespeare's
+   tragedy" → probably Shakespeare. This answer is hedged.
+
+A weak match is refused rather than guessed. Before that rule, "Who
+discovered gravity?" returned Robert Hooke from a definition that mentions
+both.
+
+**Titles:** "the first president of the United States" →
+"1st President of the United States". "First man on the moon" → "the first
+man to set foot on the Moon".
+
+**Closed world over complete data:** the border lists are complete, so "Does
+Spain border Germany?" → "No. Spain borders Andorra, France, Gibraltar,
+Morocco and Portugal." This is Reiter's closed-world assumption, applied only
+where the data is complete.
+
+**Small language points:**
+* "World War I" is a name, not "World War me";
+* "the symbol He" is helium, not "he";
+* the dead *were* from somewhere, while Ann *is* from Paris.
+
+#### 15.4 Results
+
+| Generalist probe | Correct |
+|---|---|
+| GENERAL, 68 questions, baseline before this work | 13/68 (19%) |
+| the same 68 after it (development data) | 67/68 |
+| GENERAL_2, 68 fresh questions, written afterwards, run once | **52/68 (76%)** |
+| GENERAL_2 after the general fixes it prompted (development data) | 61/68 |
+| GENERAL_3, 46 fresh questions, written after those fixes, run once | **39/46 (85%)** |
+| GENERAL_3 after the fixes it prompted (development data) | 43/46 |
+
+**GENERAL_2's first-run misses (16):**
+* 7 were knowledge the sources lack: the telescope's inventor, *Romeo and
+  Juliet*, the Sistine Chapel, where lemurs live, what a microscope is for,
+  the largest animal, and gravity. The dictionary has Newton's law of
+  gravitation but never says he "discovered" gravity, and the one answer
+  given (Hooke) was wrong.
+* 9 were general bugs:
+  * the "I" of "World War I";
+  * Darwin the naturalist against the town;
+  * borders as a closed world;
+  * two single-year events;
+  * looser titles;
+  * modifiers in superlatives;
+  * a purpose after the genus;
+  * the solar system count.
+
+**GENERAL_3's first-run misses (7):**
+* 3 were knowledge gaps:
+  * Gutenberg's definition never says "invented";
+  * Augustus' never says "first emperor";
+  * Columbus "discovered the New World", which the dictionary does not link
+    to America. The first run named John Cabot instead, from "discovered the
+    mainland of North America". Matches inside a longer name are now refused.
+* 4 were general bugs:
+  * dates written "(1954-1975)" and "on 18 June 1815";
+  * "the symbol He";
+  * "prolific and influential Spanish artist".
+
+Each fix is a rule, tested on fixtures in `tests/test_world.py`, not an
+answer. All earlier suites are unchanged:
+* 159/159 on the knowledge probe;
+* 73/73 and 56/56 on the natural-phrasing probes, since the country data now
+  answers the one earlier miss, the UK's money;
+* 100% on the story tasks, with and without the 200k facts underneath;
+* 49 unit tests.
+
+The median answer takes 0.3 ms. Questions that search all 82k definitions
+(who did what, dictionary superlatives) take 20 to 80 ms.
+
+#### 15.5 Limits
+
+* **Coverage** is WordNet 3.0's, which dates from 2006, plus the three
+  datasets. There are no populations, no current affairs, no works of art (no
+  Mona Lisa), no sport and no companies. The remaining misses are all of this
+  kind.
+* **The reader is a set of patterns.** It has errors: same-named places can
+  still merge, and a year in a definition may not be the event's year.
+* **Counts depend on which list is taken as complete.** "195 countries" is
+  the dataset's count of independent states, and "four oceans" is the pack's.
+* **This is not MMLU.** The probe asks single facts. Nothing here changes the
+  comparison with Gemma 1 in §13.
+* **The next step for breadth** is a large open knowledge base (Wikidata
+  dumps) through the same importers, with the same care over names. The
+  extraction patterns should be learned rather than written.
+
+### 16. References
 
 **Compression and count-based language models**
 * M. Mahoney, *Data Compression Explained* (mirror):
@@ -1183,6 +1393,17 @@ training and test set for exactly that.
   dictionaries", SIGDOC 1986.
 * D. Touretzky, *The Mathematics of Inheritance Systems*, 1986 (inferential
   distance).
+* M. Hearst, "Automatic acquisition of hyponyms from large text corpora",
+  COLING 1992.
+* M. Banko et al., "Open information extraction from the web", IJCAI 2007.
+* S. Harabagiu, G. Miller & D. Moldovan, "WordNet 2: a morphologically and
+  semantically enhanced resource" (Extended WordNet: parsed glosses),
+  SIGLEX 1999.
+* R. Reiter, "On closed world data bases", in *Logic and Data Bases*, 1978.
+* World data: mledoze/countries (ODbL), https://github.com/mledoze/countries;
+  datasets/world-cities (GeoNames, CC BY 3.0),
+  https://github.com/datasets/world-cities; Periodic-Table-JSON
+  (CC BY-SA 3.0), https://github.com/Bowserinator/Periodic-Table-JSON
 
 **Weights and mixtures**
 * W. Zaremba, I. Sutskever & O. Vinyals, "Recurrent neural network

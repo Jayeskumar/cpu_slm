@@ -34,4 +34,11 @@ for pkg in wordnet names; do
     (cd "$D/nltk" && unzip -q -o "$pkg.zip")
   fi
 done
+# Open world data, for `python3 -m mnemo feed` (each keeps its own licence):
+#   countries: mledoze/countries (ODbL 1.0) -- borders, area, region, languages,
+#   currencies, demonyms; world cities: datasets/world-cities (CC BY 3.0, from
+#   GeoNames); chemical elements: Bowserinator/Periodic-Table-JSON (CC BY-SA 3.0)
+fetch https://raw.githubusercontent.com/mledoze/countries/master/countries.json "$D/world/countries.json"
+fetch https://raw.githubusercontent.com/datasets/world-cities/master/data/world-cities.csv "$D/world/world-cities.csv"
+fetch https://raw.githubusercontent.com/Bowserinator/Periodic-Table-JSON/master/PeriodicTableJSON.json "$D/world/elements.json"
 echo "done"; du -sh "$D"/*

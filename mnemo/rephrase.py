@@ -136,7 +136,7 @@ def rephrase(text):
     # 'how many days are (there) in a week' -> 'how many days does a week have'
     m = re.match(r"^how many (.+?) (?:are (?:there )?|is (?:there )?)?in (?:a |an |one |the )?(.+)$",
                  body, _I)
-    if m and " have" not in body.lower():
+    if m and " have" not in body.lower() and not m.group(2)[:1].isupper():   # not 'in Africa'
         return _question(f"how many {m.group(1)} does a {m.group(2)} have"), False
     # 'what language do they speak in Brazil', 'what currency does Japan use'
     m = re.match(r"^(?:what|which) (?:language|languages) (?:do (?:they|people|you) speak|"
@@ -152,6 +152,17 @@ def rephrase(text):
         re.match(r"^what is the currency in (.+)$", body, _I)
     if m:
         return _question("what is the currency of " + m.group(1)), False
+    # 'what do you call people from France' (before 'you' is read as me)
+    m = re.match(r"^what (?:do|would|should) (?:you|we|people|they) call (?:people|someone|a person|"
+                 r"the people|those|natives|a native|inhabitants|an inhabitant) (?:from|of) (.+)$",
+                 body, _I) or \
+        re.match(r"^what (?:is|are) (?:someone|a person|people|the people|natives|a native) "
+                 r"(?:from|of) (.+?) called$", body, _I)
+    if m:
+        return _question(f"what are people from {m.group(1)} called"), False
+    m = re.match(r"^what (?:is|are) (.+?) made from$", body, _I)
+    if m:
+        return _question(f"what is {m.group(1)} made of"), False
     m = re.match(r"^(?:what|which) (?:city|town) is the capital of (.+)$", body, _I) or \
         re.match(r"^what is the capital city of (.+)$", body, _I)
     if m:

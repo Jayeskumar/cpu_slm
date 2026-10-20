@@ -102,9 +102,10 @@ _O_ES = {"tomato", "potato", "hero", "echo", "torpedo", "veto", "mosquito", "vol
 
 
 def plural(word):
+    head, sep, last = word.rpartition(" ")      # 'eucalyptus leaf' -> 'eucalyptus leaves'
     for p, s in _IRREGULAR_PLURALS.items():
-        if s == word and p != s:
-            return p
+        if s == last and p != s:
+            return head + sep + p
     if word in _SAME_PLURAL or word.split()[-1] in _SAME_PLURAL:
         return word
     if word.endswith("y") and len(word) > 2 and word[-2] not in "aeiou":
@@ -348,9 +349,12 @@ class WorkingMemory:
 _PRONOUNS = r"\b(he|she|it|they|him|her|them)\b"
 
 
-def resolve_pronouns(low, wm):
-    """Replace pronouns by their referents (a group becomes 'x and y')."""
+def resolve_pronouns(low, wm, keep=()):
+    """Replace pronouns by their referents (a group becomes 'x and y');
+    keep: words that are not pronouns here ('the symbol He')."""
     def sub(m):
+        if m.group(1) in keep:
+            return m.group(0)
         ref = wm.resolve(m.group(1))
         if not ref:
             return m.group(0)
@@ -432,7 +436,9 @@ def _parse_sentence(sentence, wm=None):
         return Parse([Query("why")], raw)
     if low in ("stats", "statistics", "status", "what do you know", "memory"):
         return Parse([Command("stats")], raw)
-    low = resolve_pronouns(low, wm)
+    # a capitalised 'He' inside a sentence is a name or a symbol (helium), not 'he'
+    keep = {w.lower() for w in re.findall(r"(?<=[a-z,] )(He|She|It|They|Him|Her|We|Us)\b", raw)}
+    low = resolve_pronouns(low, wm, keep)
     items = (_parse_question(low, wm) if question or _looks_like_question(low)
              else _parse_statement(low, wm))
     return Parse(items or [], raw)
@@ -457,6 +463,20 @@ def _parse_statement(low, wm):
         for a in agents:
             out += _parse_statement(f"{a} {m.group(3)} {m.group(4)}", wm)
         return out
+
+    # lives: 'Tom was born in 1930', 'Sue was born in Paris', 'Tom died in 2001'
+    m = _rx(_s("s") + r" (?:was|were) born in (?:the year )?(?P<y>\d{1,4}(?: bc)?)")(low)
+    if m:
+        return [Fact(_subject(m["s"], wm), "born", m["y"].replace(" bc", " BC"))]
+    m = _rx(_s("s") + r" (?:died|passed away) in (?:the year )?(?P<y>\d{1,4}(?: bc)?)")(low)
+    if m:
+        return [Fact(_subject(m["s"], wm), "died", m["y"].replace(" bc", " BC"))]
+    m = _rx(_s("s") + r" (?:was|were) born in " + _s("p"))(low)
+    if m:
+        return [Fact(_subject(m["s"], wm), "born_in", noun(m["p"]))]
+    m = _rx(_s("s") + r" (?:is|was|are|were|comes|came) from " + _s("p"))(low)
+    if m:
+        return [Fact(_subject(m["s"], wm), "from", noun(m["p"]))]
 
     # world events
     m = _rx(_s("a") + r" " + _MOVE + r" (?:to|into|towards|toward) " + _s("p"))(low)
@@ -714,10 +734,117 @@ _NOT_A_KIND = {"do", "does", "did", "is", "are", "was", "were", "can", "could", 
 _PLACE_KINDS = r"continent|country|state|province|city|town|region|ocean|sea|island"
 
 
+_ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6,
+             "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10, "last": 0}
+_SUPERLATIVE = (r"largest|biggest|smallest|longest|shortest|highest|tallest|deepest|oldest|"
+                r"youngest|hottest|coldest|heaviest|lightest|fastest|slowest|greatest|brightest")
+_DID = (r"invented|discovered|wrote|painted|composed|founded|built|designed|created|directed|"
+        r"sculpted|led|explored|conquered|assassinated|killed|developed|formulated|proposed|"
+        r"first climbed|ruled|unified")
+
+
+def _parse_world(low, ent):
+    """Questions about the world: dates and lives, origins, attributes,
+    superlatives, counts, and who did what."""
+    m = _rx(r"(?:when|what year|in what year|in which year) (?:was|were|is) " + _s("s") +
+            r" born")(low)
+    if m:
+        return [Query("when", ent(m["s"]), "born")]
+    m = _rx(r"(?:when|what year|in what year|in which year) (?:did|does|do) " + _s("s") +
+            r" (?P<v>die|begin|start|end|finish|happen|take place|occur|live)")(low)
+    if m:
+        rel = {"die": "died", "begin": "began", "start": "began", "end": "ended",
+               "finish": "ended"}.get(m["v"])
+        return [Query("when", ent(m["s"]), rel)]
+    m = _rx(r"(?:was|were) " + _s("s") + r" born in (?:the year )?(?P<y>\d{1,4}(?: bc)?)")(low) \
+        or _rx(r"did " + _s("s") + r" (?P<d>die) in (?:the year )?(?P<y>\d{1,4}(?: bc)?)")(low)
+    if m:
+        return [Query("yesno", ent(m["s"]), "died" if "d" in m.groupdict() else "born",
+                      m["y"].replace(" bc", " BC"))]
+    m = _rx(r"(?:was|were) " + _s("s") + r" born in " + _s("p"))(low)
+    if m:
+        return [Query("yesno", ent(m["s"]), "born_in", ent(m["p"]))]
+    m = _rx(r"how old (?:was|is) " + _s("s") + r" when (?:[a-z' -]+ )?(?:died|passed away)")(low) or \
+        _rx(r"(?:at what age|how old) did " + _s("s") + r" die")(low) or \
+        _rx(r"how long did " + _s("s") + r" live")(low)
+    if m:
+        return [Query("lifespan", ent(m["s"]))]
+    m = _rx(r"who (?:was|is) (?:born first|born earlier|older|the oldest) " + _s("a") +
+            r" or " + _s("b"))(low) or \
+        _rx(r"who (?:was born|came|lived) (?:first|earlier) " + _s("a") + r" or " + _s("b"))(low)
+    if m:
+        return [Query("born_first", ent(m["a"]), o=ent(m["b"]))]
+    m = _rx(r"when (?:was|were|is) " + _s("s"))(low)
+    if m and not m["s"].endswith(" born"):
+        return [Query("when", ent(m["s"]), None)]
+    m = _rx(r"what (?:nationality|country) (?:was|is|were|are) " + _s("s"))(low) or \
+        _rx(r"what (?:was|is) " + _s("s") + r"'s nationality")(low)
+    if m and not re.search(r" (?:in|on|the capital of)$", m["s"]):
+        return [Query("objects", ent(m["s"]), "nationality")]
+    m = _rx(r"where (?:was|is|were|are|did|do|does) " + _s("s") + r" (?P<v>from|come from|born)")(low)
+    if m:
+        return [Query("origin", ent(m["s"]), extra=m["v"] == "born")]
+    m = _rx(r"what (?:is|are|was) (?:the )?(?P<a>area|size|chemical symbol|symbol|atomic number) "
+            r"(?:of|for) " + _s("s"))(low)
+    if m:
+        a = {"chemical symbol": "symbol", "size": "area",
+             "atomic number": "atomic_number"}.get(m["a"], m["a"])
+        return [Query("objects", ent(m["s"]), a)]
+    m = _rx(r"how (?:big|large) (?:is|are) " + _s("s"))(low)
+    if m:
+        return [Query("objects", ent(m["s"]), "area")]
+    m = _rx(r"(?:what|which) (?:chemical )?element (?:has|is|with) (?:the )?(?P<a>symbol|atomic number) "
+            r"(?:of )?(?P<v>[a-z0-9]+)")(low)
+    if m:
+        return [Query("by_attr", "element", "symbol" if m["a"] == "symbol" else "atomic_number",
+                      m["v"])]
+    m = _rx(r"what (?:is|are) (?:a |an |the )?" + _s("s") + r" used for")(low) or \
+        _rx(r"what (?:do|does) (?:you|people|we|one) use (?:a |an |the )?" + _s("s") + r" for")(low) \
+        or _rx(r"what is the (?:use|purpose) of (?:a |an |the )?" + _s("s"))(low)
+    if m:
+        return [Query("objects", ent(m["s"]), "used_for")]
+    m = _rx(r"what (?:do you|do we|do people) call (?:people|someone|a person|the people|those) "
+            r"from " + _s("o"))(low) or _rx(r"what are (?:people|the people) from " + _s("o") +
+                                            r" called")(low)
+    if m:
+        return [Query("subjects", r="demonym_of", o=ent(m["o"]))]
+    m = _rx(r"(?:what|which) (?:is|was|are) the (?P<adj>" + _SUPERLATIVE + r") (?P<c>[a-z][a-z -]*?)"
+            r"(?: (?:in|of|on) (?:the )?(?P<y>[a-z][a-z -]*?))?")(low)
+    if m:
+        y = m["y"]
+        y = None if y in (None, "world", "earth") else noun(y)
+        return [Query("superlative", noun(m["c"]), m["adj"], y)]
+    m = _rx(r"(?:what|which) (?P<c>[a-z]+) (?:is|was) the (?P<adj>" + _SUPERLATIVE + r")"
+            r"(?: (?:one|of them|of all))?(?: (?:in|of|on) (?:the )?(?P<y>[a-z][a-z -]*?))?")(low)
+    if m:
+        y = m["y"]
+        y = None if y in (None, "world", "earth") else noun(y)
+        return [Query("superlative", noun(m["c"]), m["adj"], y)]
+    m = _rx(r"how many (?P<c>[a-z]+) (?P<v>border|borders) " + _s("o"))(low)
+    if m:
+        return [Query("count", noun(m["c"]), "border", ent(m["o"]))]
+    m = _rx(r"how many (?P<c>[a-z][a-z ]*?) (?:are there|are|exist|are there in the world)"
+            r"(?: (?:in|on) (?:the )?(?P<o>[a-z][a-z -]*?))?")(low)
+    if m:
+        return [Query("count", noun(m["c"]), "in" if m["o"] else None,
+                      ent(m["o"]) if m["o"] else None)]
+    m = _rx(r"who (?P<v>" + _DID + r") (?:the )?(?P<o>[a-z0-9][a-z0-9' -]*)")(low)
+    if m:
+        return [Query("who_did", r=m["v"], o=m["o"])]
+    m = _rx(r"who (?:was|is) the (?P<n>first|second|third|fourth|fifth|sixth|seventh|eighth|"
+            r"ninth|tenth|last|\d+(?:st|nd|rd|th)) (?P<t>[a-z][a-z' -]*)")(low)
+    if m:
+        return [Query("who_title", extra=(m["n"], m["t"]))]
+    return None
+
+
 def _parse_natural(low, ent):
     """Question types people ask that the core patterns do not cover:
     why-questions about facts, kinds, lists and examples, comparisons,
     choices, differences, places of a given kind, inverse relations."""
+    q = _parse_world(low, ent)
+    if q:
+        return q
     m = _rx(r"why (?P<q>(?:is|are|was|were|can|could|does|do|did|has|have) .+)")(low)
     if m:
         inner = m["q"]
@@ -772,8 +899,8 @@ def _parse_natural(low, ent):
             return [Query("which", noun(c), "in", noun(place))]
         return [Query("examples", noun(c))]
     m = _rx(r"(?:which|what) (?P<c>[a-z]+(?: [a-z]+)?) (?P<v>can not|can|could|lives? in|"
-            r"lives? on|are found in|is found in|are in|is in|eats?|has|have|makes?|are|is) "
-            + _s("o"))(low)
+            r"lives? on|are found in|is found in|are in|is in|eats?|has|have|makes?|borders?|"
+            r"are|is) " + _s("o"))(low)
     if m and m["c"].split()[0] not in _NOT_A_KIND and m["c"].split()[-1] not in _NOT_A_KIND:
         v = m["v"]
         if v.startswith(("live", "are found", "is found", "are in", "is in")):
@@ -894,8 +1021,8 @@ def _parse_question(low, wm):
     m = _rx(r"what (?:is|are) (?P<d>north|south|east|west) of " + _s("o"))(low)
     if m:
         return [Query("subjects", r=DIRECTIONS[m["d"]], o=ent(m["o"]))]
-    m = _rx(r"(?:tell (?:me|user) about|describe|who is|who are|who was|what is|what are) "
-            + _s("s"))(low)
+    m = _rx(r"(?:tell (?:me|user) about|describe|who is|who are|who was|who were|what is|"
+            r"what are|what was|what were) " + _s("s"))(low)
     if m:
         return [Query("describe", ent(m["s"]))]
     m = _rx(r"who (?P<v>[a-z]+) " + _s("o"))(low)
