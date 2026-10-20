@@ -1,7 +1,8 @@
 """A local chat page for a mind: python3 -m mnemo serve --brain models/kbrain
 
 Standard library only, no network access beyond the local socket, nothing
-loaded from the internet.  POST /api/hear {"text": ...} -> {"reply", "ms"};
+loaded from the internet.  POST /api/hear {"text": ...} -> {"reply", "ms", "source"} (source: 'memory', or the
+language model that answered);
 GET /api/stats; POST /api/save.  Binds to 127.0.0.1 unless told otherwise.
 """
 import json
@@ -66,7 +67,8 @@ s.concepts.toLocaleString()+" concepts \\u00b7 "+s.events+" events remembered"}c
 async function send(text){if(!text.trim())return;add("me",text);
 try{const r=await fetch("api/hear",{method:"POST",headers:{"Content-Type":"application/json"},
 body:JSON.stringify({text})});const a=await r.json();add("it",a.reply||"(no reply)",
-a.ms.toFixed(1)+" ms");stats()}catch(e){add("it","(the mind is not reachable)")}}
+a.ms.toFixed(1)+" ms"+(a.source&&a.source!=="memory"?" \u00b7 from "+a.source:""));stats()}
+catch(e){add("it","(the mind is not reachable)")}}
 document.getElementById("f").onsubmit=e=>{e.preventDefault();const t=q.value;q.value="";send(t)};
 const chips=document.getElementById("chips");for(const t of ex){const c=document.createElement(
 "button");c.type="button";c.textContent=t;c.onclick=()=>send(t);chips.appendChild(c)}
@@ -118,7 +120,7 @@ def make_server(mind, host="127.0.0.1", port=8765, brain=None):
                     t0 = time.perf_counter()
                     reply = mind.hear(text)
                     ms = (time.perf_counter() - t0) * 1000
-                self._json({"reply": reply, "ms": ms})
+                self._json({"reply": reply, "ms": ms, "source": mind.last_source})
             elif self.path == "/api/save" and brain:
                 with lock:
                     mind.save(brain)

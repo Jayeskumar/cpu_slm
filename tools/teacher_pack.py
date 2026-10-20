@@ -23,14 +23,11 @@ statement that contradicts what it would have concluded.
 """
 import argparse
 import datetime
-import json
 import os
-import re
 import sys
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from mnemo import language as L  # noqa: E402
+from mnemo.llm import LLM, readable as keep  # noqa: E402,F401  (keep: the filter)
 
 PROMPT = """List {n} short, true, general facts about {topic}.
 Write one fact per line as a simple sentence in one of these forms:
@@ -41,45 +38,9 @@ No numbering, no explanations, no other text."""
 
 
 def ask(api, endpoint, model, prompt, timeout=300):
-    if api == "ollama":
-        url, body = f"{endpoint}/api/generate", {"model": model, "prompt": prompt,
-                                                  "stream": False}
-    else:
-        url, body = f"{endpoint}/v1/chat/completions", {
-            "model": model, "messages": [{"role": "user", "content": prompt}]}
-    req = urllib.request.Request(url, json.dumps(body).encode(),
-                                 {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        out = json.load(r)
-    return out["response"] if api == "ollama" else out["choices"][0]["message"]["content"]
-
-
-_CHATTER = re.compile(r"^(?:i|we|you|here|sure|these|this|note|okay|ok|certainly|hope)\b|"
-                      r"\b(?:i|me|my|you|your|we|our)\b", re.I)
-
-
-def keep(lines, max_words=10):
-    """The simple statements Mnemo's reader understands, cleaned, without
-    repeats; chatter, headings and long sentences are dropped."""
-    seen, out = set(), []
-    for raw in lines:
-        line = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", raw).strip()
-        line = re.sub(r"\*\*|__", "", line)                  # markdown emphasis
-        if not line or line.startswith("#") or line.endswith(":") or "," in line or \
-                len(line.split()) > max_words or _CHATTER.search(line):
-            continue
-        if not line.endswith("."):
-            line = line.rstrip("!") + "."
-        items = L.parse_sentence(line).items
-        facts = [i for i in items if isinstance(i, L.Fact)]
-        if facts and len(facts) + sum(isinstance(i, L.Event) and i.kind == "be_at"
-                                      for i in items) == len(items) and \
-                all(len(i.s.split()) <= 3 and len(str(i.o).split()) <= 3 for i in facts):
-            key = line.lower()
-            if key not in seen:
-                seen.add(key)
-                out.append(line)
-    return out
+    """One request to the teacher (see mnemo/llm.py for the backends)."""
+    url = endpoint.rstrip("/") + ("/v1" if api == "openai" else "")
+    return LLM(f"{api}:{model}@{url}", timeout=timeout, max_tokens=800).ask(prompt, system=None)
 
 
 def main():

@@ -13,8 +13,9 @@ This document has three parts:
   maps onto brain systems, what it measurably does, and what it cannot do.
 * **Part III: knowledge and weights.** Feeding it general knowledge (WordNet,
   a curated pack, your own files), adding a small CPU-trained LSTM, an
-  honest comparison with Gemma 1, understanding how people actually ask, and
-  becoming a generalist (definitions read into facts, open world data).
+  honest comparison with Gemma 1, understanding how people actually ask,
+  becoming a generalist (definitions read into facts, open world data), and
+  pairing with a language model.
 
 Figures from the literature carry a source link. Three research agents
 gathered them. Their web fetches were mostly blocked, so many figures come from
@@ -1304,7 +1305,109 @@ The median answer takes 0.3 ms. Questions that search all 82k definitions
   dumps) through the same importers, with the same care over names. The
   extraction patterns should be learned rather than written.
 
-### 16. References
+### 16. Pairing with a language model
+
+The next request was for "the performance of an LLM" in Mnemo. On its own it
+cannot have that, for three reasons:
+* **Capacity.** An LLM's breadth comes from billions of weights fitted to
+  trillions of tokens. That holds orders of magnitude more facts and phrasings
+  than a 34 MB brain built from a dictionary and three datasets.
+* **Reading.** An LLM reads any English. Mnemo's reader is a set of rules
+  (§14.5).
+* **Generation.** An LLM writes fluent text. Mnemo's cortex is locally fluent
+  and globally incoherent (§9).
+
+The two kinds of system fail in opposite ways, though:
+* a language model is broad but slow, opaque and sometimes confidently wrong;
+* Mnemo is narrow but instant, exact, explained, and able to learn a fact in
+  one shot.
+
+That is the case for pairing them. The idea parallels complementary
+learning systems in the brain: a fast, specific memory beside a slow
+statistical learner. It is also retrieval-augmented generation (Lewis et al.
+2020), with a symbolic memory as the retriever.
+
+#### 16.1 Design (`mnemo/llm.py`, `Mind.attach_llm`)
+
+* **Backends.** Ollama's `/api/chat`, or any OpenAI-compatible
+  `/chat/completions` server: llama.cpp's `llama-server`, vLLM, LM Studio.
+  The client uses the standard library, at temperature 0. A model on the
+  same machine is reached directly, never through a proxy.
+* **Routing.** Memory answers first. The model is called only when the reply
+  would be "I don't know" or "I don't understand", and only for a question or
+  request, never for a statement.
+* **Grounding.** The prompt carries up to 12 lines of what Mnemo holds about
+  the things the question mentions: a definition and the most confident facts
+  for each. The things are found from:
+  * the names the speaker capitalised;
+  * the slots of Mnemo's own parse of the question;
+  * nouns, recognised by a determiner or a plural.
+
+  Verbs ("how does it *work*") and a word's rarer senses (Anatole France for
+  France) are left out unless nothing else is known. The last three exchanges
+  of the conversation go along as context.
+* **Provenance.** The model's answers carry its name. "Why?" answers that they
+  came from the model, not from memory, and gives no reasons. Later answers
+  that rest on facts the model supplied add "(I learned that from a language
+  model.)".
+* **Learning and checking.** The model's answer is filtered by the same
+  reader-based filter as the teacher tool (§13.2), which keeps short
+  statements Mnemo can parse. Each kept statement is compared with memory
+  first:
+  * if Mnemo firmly believes the opposite (confidence at least 0.7), the
+    statement is pointed out and not stored;
+  * otherwise it is stored with source `llm` and confidence 0.6. That is below
+    the user, WordNet and the world data, so they win any conflict.
+
+  A question the model once answered can then be answered from memory in
+  well under a millisecond.
+
+#### 16.2 What is measured, and what is not yet
+
+`tests/test_llm.py` tests the plumbing against a stand-in server on localhost
+that replays canned replies:
+* both API formats;
+* memory first, so the model is not called for what Mnemo knows;
+* grounding in the prompt;
+* provenance, and the answer to "Why?";
+* learning, and refusing a contradiction;
+* no server running.
+
+It deliberately says nothing about how well any model answers.
+
+`tools/llm_eval.py` runs every probe set in three modes:
+* the model alone, with the conversation but none of Mnemo's facts;
+* Mnemo alone;
+* the pair.
+
+It reports accuracy, latency and the share of questions the model answered.
+It could not be run with a real model here: the environment's network policy
+blocks `huggingface.co` and `registry.ollama.ai`, so no weights could be
+fetched. No model numbers are reported until they are measured. Two cautions
+for whoever runs it:
+* **Biased sets.** The probe sets are partly Mnemo's development data, which
+  biases the comparison in Mnemo's favour (459/470 for Mnemo alone). The
+  sets' first-run scores are the fair figures for Mnemo.
+* **The checker.** Yes/no answers count only if they begin with yes or no.
+  The system prompt asks for that, but small models do not always comply.
+
+#### 16.3 Limits and next steps
+
+* **Speed.** An answer that goes to the model takes as long as the model:
+  seconds on a CPU, rather than Mnemo's milliseconds.
+* **Checking is shallow.** Only what Mnemo can parse is checked. A wrong
+  answer in a form Mnemo cannot read passes unchecked, though it is still
+  labelled.
+* **Only gaps go to the model.** The model is never asked about what Mnemo
+  answers itself, so a wrong answer from memory is not caught by the model. A
+  mode that asks both and reports disagreement would be easy to add.
+* **The next step** is to run `tools/llm_eval.py` with a small CPU model
+  (0.5–2B parameters) where one can be downloaded, and report the three
+  columns. A pure-numpy runtime for a small open model, like the numpy LSTM of
+  §12, would put the model inside the repository. It should be written only
+  where real weights are available to check it against.
+
+### 17. References
 
 **Compression and count-based language models**
 * M. Mahoney, *Data Compression Explained* (mirror):
@@ -1400,6 +1503,11 @@ The median answer takes 0.3 ms. Questions that search all 82k definitions
   semantically enhanced resource" (Extended WordNet: parsed glosses),
   SIGLEX 1999.
 * R. Reiter, "On closed world data bases", in *Logic and Data Bases*, 1978.
+* P. Lewis et al., "Retrieval-augmented generation for knowledge-intensive NLP
+  tasks", NeurIPS 2020: https://arxiv.org/abs/2005.11401
+* J. McClelland, B. McNaughton & R. O'Reilly, "Why there are complementary
+  learning systems in the hippocampus and neocortex", Psychological Review
+  1995.
 * World data: mledoze/countries (ODbL), https://github.com/mledoze/countries;
   datasets/world-cities (GeoNames, CC BY 3.0),
   https://github.com/datasets/world-cities; Periodic-Table-JSON

@@ -47,6 +47,10 @@ class Mind:
         self.surprises = []
         self._caps = {}             # capitalised names in the current sentence
         self._spoken = {}           # every name as the speaker wrote it ('John', not 'the john')
+        self.llm = None             # an optional language model for what memory lacks (llm.py)
+        self.llm_learn = True
+        self.last_source = "memory"
+        self._transcript = []       # recent (said, replied) pairs, for the model's context
         if innate:
             self._innate()
 
@@ -70,11 +74,68 @@ class Mind:
     def hear(self, text):
         """Process an utterance (one or more sentences); returns the reply."""
         replies = []
+        self.last_source = "memory"
         for sent in L.split_sentences(text):
             r = self._sentence(sent)
             if r:
                 replies.append(r)
-        return " ".join(replies)
+        reply = " ".join(replies)
+        self._transcript = (self._transcript + [(text, reply)])[-4:]
+        return reply
+
+    # ------------------------------------------------------------------ a language model
+    def attach_llm(self, llm, learn=True):
+        """Pair the mind with a language model (llm.LLM): it is asked only what
+        memory cannot answer, and what it says that Mnemo can read is kept
+        as weak facts (learn=False keeps nothing)."""
+        self.llm, self.llm_learn = llm, learn
+
+    _UNKNOWN = ("I don't know", "I don't understand", "I haven't read", "I need a semantic",
+                "I have no cortex", "I know the word", "I don't think I know")
+
+    def _consult(self, sent, fallback):
+        """Ask the model what memory cannot answer, showing it what memory
+        holds about the question's words (retrieval-augmented, from a
+        symbolic memory)."""
+        from .llm import grounding, prompt, sentences
+        facts = grounding(self, sent)
+        try:
+            history = [(q, re.sub(r" \[[^\]]+\].*$", "", a)) for q, a in self._transcript[-3:]]
+            text = self.llm.ask(prompt(sent, facts), history=history)
+        except (OSError, ValueError, KeyError) as e:   # not running, timed out, odd reply
+            return f"{fallback} (The language model did not answer: {type(e).__name__}.)"
+        text = " ".join(sentences(text)[:3])[:600].strip() or "I don't know."
+        self.last = Answer(Truth(1.0, 0.5), [], "language model", stmt=(self.llm.name, len(facts)))
+        self.last_source = self.llm.name
+        note = self._learn_from(text) if self.llm_learn else ""
+        return f"{text} [{self.llm.name}]{note}"
+
+    def _learn_from(self, text):
+        """Keep the model's simple statements as weak facts (source 'llm',
+        confidence 0.6), except those that contradict what memory firmly
+        holds; those are pointed out instead."""
+        from .llm import readable, sentences
+        doubts = []
+        for line in readable(sentences(text))[:3]:
+            names = self._remember_names(line)
+            for it in L.parse_sentence(line, L.WorkingMemory(), names).items:
+                if not isinstance(it, L.Fact):
+                    continue
+                self.canon_fact(it)
+                prior = self.kb.ask(it.s, it.r, it.o)
+                if prior.known and prior.truth.c >= 0.7 and (prior.truth.f >= 0.5) != it.positive:
+                    doubts.append(self.kb.explain(prior, brief=True))
+                elif self.kb.get(it.s, it.r, it.o) is None:
+                    self.kb.tell(it.s, it.r, it.o, it.positive, 0.6, it.qty, "llm",
+                                 generic=it.generic)
+        return f" (I doubt part of that: {doubts[0][:1].lower() + doubts[0][1:]})" if doubts else ""
+
+    @staticmethod
+    def _from_llm(a, depth=0):
+        """Does an answer rest on something a language model said?"""
+        return depth < 6 and any(
+            (isinstance(p, Fact) and p.source == "llm") or
+            (isinstance(p, Answer) and Mind._from_llm(p, depth + 1)) for p in a.premises)
 
     def read(self, text, extract=True):
         """Read a document: the cortex learns its language and simple
@@ -107,13 +168,18 @@ class Mind:
         sent = self._persons(sent)
         names = self._remember_names(sent)
         p = L.parse_sentence(sent, self.wm, names)
+        self._last_parse = p.items
+        before = self.last
         if not p.items:
             p = self._fragment(sent, names)
-            if p is None:
-                return self._fallback(sent)
-        out = self._respond(p)
+        out = self._respond(p) if p is not None else self._fallback(sent)
         if flip and out:       # 'is it true that penguins can't fly' was asked the other way
             out = self._flip(out)
+        if self.llm is not None and out.startswith(self._UNKNOWN) and \
+                (sent.strip().endswith("?") or L._looks_like_question(sent.strip().lower())):
+            return self._consult(sent, out)
+        if self.last is not before and self.last is not None and self._from_llm(self.last):
+            out += " (I learned that from a language model.)"
         return out
 
     _FLIP = {"Yes.": "No.", "No.": "Yes.", "Probably.": "Probably not.",
@@ -198,6 +264,10 @@ class Mind:
             low = re.sub(pat, rep, low, flags=re.I)
         return low.replace("\u2160", "I")
 
+    # small words inside names: the Bay of Biscay, Leonardo da Vinci, Vincent van Gogh
+    _PARTICLES = {"of", "da", "de", "di", "du", "del", "van", "von", "der", "den", "la", "le", "bin",
+                  "ibn", "al"}
+
     def _remember_names(self, sent):
         """Capitalised names in a sentence become display names; returns
         them (lower case) so that 'China' can mean the country."""
@@ -208,7 +278,7 @@ class Mind:
             if t[0].isupper() and t.lower() not in _COMMON and \
                     (i > 0 or self._proper_at_start(toks)):
                 j = i
-                while j + 1 < len(toks) and (toks[j + 1][0].isupper() or toks[j + 1] == "of"
+                while j + 1 < len(toks) and (toks[j + 1][0].isupper() or toks[j + 1] in self._PARTICLES
                                              and j + 2 < len(toks) and toks[j + 2][0].isupper()):
                     j += 1
                 name = " ".join(toks[i:j + 1])
@@ -1340,6 +1410,12 @@ class Mind:
         and of things ('the hero of William Shakespeare's tragedy')."""
         kb = self.kb
         obj = re.sub(r"^(?:the|a|an) ", "", q.o.strip())
+        verb = L.verb_lemma(q.r.split()[-1])
+        for k in self._senses_of(obj):       # what someone said: 'Leonardo painted the Mona Lisa'
+            f = next((f for f in kb.inn(k, verb) if f.truth.f >= 0.5), None)
+            if f is not None:
+                self._record(Answer(f.truth, [f]))
+                return f"{self._cap(kb.display.get(f.s) or kb.ref(f.s))}."
         if q.r == "discovered":
             for k in self._senses_of(obj):
                 f = next(iter(kb.out(k, "discovered_by")), None)
@@ -1508,6 +1584,11 @@ class Mind:
         if self.last is None:
             return "Why what?"
         a = self.last
+        if a.how == "language model":
+            name, n = a.stmt
+            shown = f" I showed it {n} facts from my memory." if n else ""
+            return (f"That answer came from the language model {name}, not from my memory, "
+                    f"so I cannot give reasons for it.{shown}")
         if a.how == "episodic":
             return "That is what I last saw happen."
         if a.how == "analogy":

@@ -109,8 +109,16 @@ def load_mind(brain, learn=True):
     return Mind(learn_language=learn)
 
 
+def attach_llm(m, a):
+    if getattr(a, "llm", None):
+        from .llm import LLM
+        m.attach_llm(LLM(a.llm), learn=not a.no_llm_learn)
+        print(f"language model: {a.llm} (asked only what my memory cannot answer)")
+
+
 def cmd_chat(a):
     m = load_mind(a.brain, learn=not a.no_learn)
+    attach_llm(m, a)
     print("Mnemo is listening. Teach me facts, tell me stories, ask questions, "
           "'complete: <text>' to imagine, 'why?' for my reasoning, 'quit' to stop.")
     while True:
@@ -138,6 +146,7 @@ def cmd_serve(a):
                                           if os.path.isdir(b)), None)
     m = load_mind(brain)
     print(f"brain: {brain or '(empty mind)'}")
+    attach_llm(m, a)
     serve(m, a.host, a.port, brain)
 
 
@@ -216,6 +225,10 @@ def main(argv=None):
     c.add_argument("--no-learn", action="store_true")
     c.add_argument("--save", action="store_true", help="save what was learned on exit")
     c.add_argument("--timing", action="store_true")
+    c.add_argument("--llm", metavar="SPEC", help="a language model for what memory cannot "
+                     "answer: ollama:MODEL[@URL] or openai:MODEL[@URL] (see mnemo/llm.py)")
+    c.add_argument("--no-llm-learn", action="store_true",
+                     help="do not keep the model's statements as facts")
     c.set_defaults(fn=cmd_chat)
     f = sub.add_parser("feed", help="feed general knowledge (WordNet, packs, fact files)")
     f.add_argument("files", nargs="*", help="statements (.txt) or triples (.tsv, .jsonl)")
@@ -234,6 +247,10 @@ def main(argv=None):
     v.add_argument("--brain", default=None, help="brain directory (default: models/kbrain)")
     v.add_argument("--host", default="127.0.0.1")
     v.add_argument("--port", type=int, default=8765)
+    v.add_argument("--llm", metavar="SPEC", help="a language model for what memory cannot "
+                     "answer: ollama:MODEL[@URL] or openai:MODEL[@URL] (see mnemo/llm.py)")
+    v.add_argument("--no-llm-learn", action="store_true",
+                     help="do not keep the model's statements as facts")
     v.set_defaults(fn=cmd_serve)
     d = sub.add_parser("demo", help="scripted tour")
     d.add_argument("--brain", default="models/brain")

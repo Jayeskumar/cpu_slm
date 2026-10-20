@@ -42,6 +42,11 @@ what weight-based learning adds.
   Africa?", "When did World War II end?" or "How many countries border
   Germany?". On a 68-question generalist probe it went from 13 to 67 correct.
   Fresh sets written afterwards scored 76% and then 85% on their first runs.
+* It can be **paired with a large language model** running on your machine
+  (Ollama, or any OpenAI-compatible server). Mnemo answers what it knows in a
+  millisecond, with reasons. The model answers the rest, shown the facts Mnemo
+  holds about the question. What the model says is labelled and checked, and
+  what Mnemo can read is kept for next time.
 * On Tiny Shakespeare it scores 2.04 bits per character with learning frozen
   (1.85 online) after 7 s of CPU training. nanoGPT's 10.65M-parameter GPU
   transformer scores 2.12.
@@ -70,7 +75,7 @@ The full survey, design rationale, measurements and limitations are in
 make                       # builds build/mnemo (CLI) and build/libmnemo.so (C99, no deps)
 python3 -m mnemo demo      # reasoning tour; needs only numpy
 python3 -m mnemo chat      # talk to it: teach facts, tell stories, ask questions
-python3 tests/run_tests.py # 49 unit tests (also runnable with pytest)
+python3 tests/run_tests.py # 54 unit tests (also runnable with pytest)
 python3 tests/story_tasks.py 200   # bAbI-style story suite
 ```
 
@@ -385,6 +390,60 @@ You can also generate text for the cortex to read, or for the LSTM to train on
 
 RESEARCH.md §13 has the full comparison table.
 
+### Pairing it with a language model
+
+On its own, Mnemo cannot have an LLM's breadth or fluency:
+* a model with billions of weights stores far more knowledge than a 34 MB
+  brain;
+* it reads any English.
+
+Mnemo can, however, work alongside one at question time and keep its own
+strengths:
+
+```bash
+ollama pull qwen2.5:0.5b            # or gemma:2b, llama3.2:1b, ... on your machine
+python3 -m mnemo chat --brain models/kbrain --llm ollama:qwen2.5:0.5b
+python3 -m mnemo serve --llm ollama:qwen2.5:0.5b
+# any OpenAI-compatible server (llama.cpp's llama-server, vLLM, LM Studio):
+python3 -m mnemo chat --brain models/kbrain --llm openai:MODEL@http://127.0.0.1:8080/v1
+```
+
+`mnemo/llm.py` uses the standard library only. It downloads nothing and talks
+only to the server you name. Each question is handled like this:
+
+1. **Memory first.** Mnemo answers whatever it can from its own memory,
+   exactly and with reasons, in about 0.3 ms. The model is not called.
+2. **The model for the rest.** A question that Mnemo cannot answer or parse
+   goes to the model, along with the facts Mnemo holds about the things it
+   mentions. This is retrieval from a symbolic memory, so the model is
+   grounded in what Mnemo knows.
+3. **Labelled.** The model's answer carries its name, for example
+   "… [qwen2.5:0.5b]", and the chat page shows where each answer came from.
+   "Why?" says the answer came from the model and has no reasons behind it.
+4. **Checked and kept.** Short statements in the answer that Mnemo can read
+   are kept as weak facts, at confidence 0.6. A statement that contradicts
+   something Mnemo firmly believes is pointed out instead: "(I doubt part of
+   that: penguins cannot fly.)". The next time, Mnemo answers from memory and
+   says it learned the fact from a language model. `--no-llm-learn` turns
+   this off.
+
+To measure the model alone, Mnemo alone, and the pair on every probe set:
+
+```bash
+python3 tools/llm_eval.py --llm ollama:qwen2.5:0.5b -v --out results/llm_eval.txt
+```
+
+**Not measured here yet.** This environment's network policy blocks
+`huggingface.co` and `registry.ollama.ai`, so no model could be downloaded.
+The bridge is tested against a stand-in server that replays canned replies
+(`tests/test_llm.py`). Those tests check the plumbing, not any model's
+quality.
+
+When you do measure, note that the probe sets are partly Mnemo's own
+development data. That flatters the "mnemo" column, which scores 459/470
+there. The fair numbers for Mnemo are its first runs on fresh sets: 76% and
+85% on the generalist probe. RESEARCH.md §16 has the design and its limits.
+
 ## How it works
 
 ```text
@@ -430,6 +489,7 @@ RESEARCH.md §13 has the full comparison table.
 | `mnemo/world.py` | ordered event memory; learned motive associations | episodic memory |
 | `mnemo/language.py` | pattern parser; 4-slot working memory | language comprehension |
 | `mnemo/neural.py` | 2-layer LSTM in numpy, mixed with the counts (optional) | slow, generalising cortical learning |
+| `mnemo/llm.py` | an optional local language model, asked only what memory lacks, grounded in retrieved facts, checked, and learned from | asking someone who has read more, then remembering the answer |
 
 ## Results
 
@@ -483,12 +543,13 @@ It is locally fluent and globally incoherent; see Limitations below.
 src/            C engine: cortex.c (context mixing), lexicon.c (word model), main.c (CLI)
 mnemo/          Python mind: cortex wrapper, language, knowledge, world, semantic, hdc, CLI,
                 feed (WordNet / packs / fact files), neural (numpy LSTM), rephrase (how people
-                ask, sums), serve (local chat page)
+                ask, sums), serve (local chat page), llm (pairing with a language model)
 knowledge/      general.txt, the curated knowledge pack
 tests/          unit tests, bAbI-style story suite, general-knowledge, natural-phrasing and
                 generalist probes
 docs/           screenshots
-tools/          kn_reference.py (exact KN5), train_lstm.py, hybrid_eval.py, teacher_pack.py
+tools/          kn_reference.py (exact KN5), train_lstm.py, hybrid_eval.py, teacher_pack.py,
+                llm_eval.py (Mnemo vs a language model vs both, on the probes)
 scripts/        get_data.sh, benchmark.sh
 RESEARCH.md     survey + design + results + limitations + roadmap
 ```
